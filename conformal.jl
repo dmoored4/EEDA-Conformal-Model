@@ -1,6 +1,17 @@
 ### A Pluto.jl notebook ###
 # v0.19.41
 
+#> [frontmatter]
+#> title = "Conformal Model for Energy Forecasting and Trading Optimization"
+#> date = "2024-05-08"
+#> tags = ["Flux", "Conformal Models", "Conditional Value at Risk", "Julia", "Pluto", "Metal", "GPU Programming", "Machine Learning", "Time-Series Forecasting"]
+#> description = "Semester project for Rutgers Energy Markets and Data Analytics, Spring 2024. We applied conformal modeling to a GRU to predict energy production data and trading prices for the IEEE Hybrid Energy Competition. We then applied Conditional Value at Risk to optimize the trading strategy."
+#> 
+#>     [[frontmatter.author]]
+#>     name = "Daniel Moore"
+#>     [[frontmatter.author]]
+#>     name = "Laila Saleh"
+
 using Markdown
 using InteractiveUtils
 
@@ -18,8 +29,7 @@ end
 begin
 	using PlutoUI
 	using CSV, DataFrames, Dates
-	using ConformalPrediction, MLJFlux
-	using Flux, Metal
+	using Flux
 	using StatsBase, StatsPlots
 	gr(fontfamily=:Times)
 	md"""
@@ -28,10 +38,10 @@ begin
 end
 
 # ╔═╡ 1431c33d-00cd-40be-a548-c473cf2be82c
-TableOfContents(depth=6)
+TableOfContents(depth=2)
 
 # ╔═╡ 4694df35-d2d8-4d39-ba60-07a894357d09
-TableOfContents(aside=false, depth=6)
+TableOfContents(aside=false, depth=3)
 
 # ╔═╡ 7773febb-95f8-4c44-8eda-98397a3b7ad0
 md"""
@@ -64,6 +74,8 @@ begin
 	select!(data, Not(:solar_pred, :wind_offshore_pred, :wind_onshore_pred))
 	data[!, Not(:timestamp_utc)] = Float32.(data[!, Not(:timestamp_utc)])
 	rename!(data, :solar_act=>:Solar, :wind_act=>:Wind, :dayahead_price=>:DAP, :imbalance_price=>:SSP)
+	data.TotalEnergy = data.Wind + data.Solar
+	select!(data, :timestamp_utc, :Solar, :Wind, :TotalEnergy, :DAP, :SSP)
 	energy_cols = names(data)[2:end]
 	data
 end
@@ -93,6 +105,7 @@ begin
 	sort!(leftjoin!(data, weather, on=:temp_time=>:datetime), :timestamp_utc)
 	select!(data, Not(:temp_time))
 	filter!(row -> !any(ismissing, row), data)
+	unique!(data)
 	select!(data, ["timestamp_utc"; weather_cols; energy_cols])
 	data[!, 2:end] = data[:, 2:end] .|> Float32
 	data
@@ -102,6 +115,17 @@ end
 md"""
 # 2. Data Visualizations
 """
+
+# ╔═╡ 1dc18c4d-5dbe-460d-ac84-28e1ac6dbab5
+function every4hrs_date_noon(dt)
+	if hour(dt) % 4 == 0 & minute(dt) == 0
+		if hour(dt) == 12
+			Dates.format(dt, "u-d HH:MM")
+		else
+			Dates.format(dt, "HH:MM")
+		end
+	end
+end
 
 # ╔═╡ 2940b832-970b-4538-ab11-e2a3836226f2
 begin
@@ -122,7 +146,8 @@ begin
 		"temp" => :darkred,
 		"Solar" => :gold,
 		"Wind" => :darkblue,
-		"CloudCover" => :darkgrey
+		"CloudCover" => :darkgrey,
+		"Total Energy" => :hotpink,
 	)
 	
 	clouds = cgrad([:gold, :darkgrey])
@@ -332,6 +357,58 @@ md"""
 		color=temp, cbartitle="° C", framestyle=:none)
 )
 
+# ╔═╡ d513b0d2-8719-4328-86af-75d2b5bdc829
+# ╠═╡ show_logs = false
+@df data plot(
+	layout=@layout([a b{0.1w}]),
+	plot(
+		layout=(2,1), cbar=false,
+		plot(
+			ylabel="Total Energy", xticks=false,
+			Time.(:timestamp_utc), :TotalEnergy, label=false,
+			group=yearmonthday.(:timestamp_utc), lz = :temp, color=temp, lw=4, α=0.5),
+	
+		scatter(
+			xlabel="Time of Day", ylabel="Total Energy",
+			xticks=daily_xticks,
+			Time.(:timestamp_utc), :TotalEnergy, label=false,
+			group=yearmonthday.(:timestamp_utc), mz = :temp, color=temp, ms=10, markerstrokewidth=0.3, α=0.5)
+	),
+	
+	plot(
+		xlims=(0,0),
+		[-2, -2],
+		[extrema(:temp)[1], extrema(:temp)[2]], label=false,
+		line_z = [extrema(:temp)[1], extrema(:temp)[2]],
+		color=temp, cbartitle="° C", framestyle=:none)
+)
+
+# ╔═╡ 2a9b7009-3ac7-4431-8806-af081d5435c2
+# ╠═╡ show_logs = false
+@df data plot(
+	layout=@layout([a b{0.1w}]),
+	plot(
+		layout=(2,1), cbar=false,
+		plot(
+			ylabel="Total Energy", xticks=false,
+			Time.(:timestamp_utc), :TotalEnergy, label=false,
+			group=yearmonthday.(:timestamp_utc), lz = :windspeed, color=winds, lw=4, α=0.5),
+	
+		scatter(
+			xlabel="Total Energy", ylabel="Wind Production",
+			xticks=daily_xticks,
+			Time.(:timestamp_utc), :TotalEnergy, label=false,
+			group=yearmonthday.(:timestamp_utc), mz = :windspeed, color=winds, ms=10, markerstrokewidth=0.3, α=0.5)
+	),
+	
+	plot(
+		xlims=(0,0),
+		[-2, -2],
+		[extrema(:windspeed)[1], extrema(:windspeed)[2]], label=false,
+		line_z = [extrema(:windspeed)[1], extrema(:windspeed)[2]],
+		color=winds, cbartitle="Wind Speed (kph)", framestyle=:none)
+)
+
 # ╔═╡ 83f8334c-494a-412b-989e-0d7caf412d58
 md"""
 ## 2.3 Statistical Plots
@@ -353,6 +430,12 @@ end
 
 # ╔═╡ 772072d2-fc85-4ce5-8c10-294512978b81
 @df data marginalkde(:DAP, :SSP, xlabel="DAP", ylabel="SSP")
+
+# ╔═╡ da3f2a32-653e-4ea0-8e14-f3731ba1b056
+@df data marginalkde(:TotalEnergy, :DAP, xlabel="Total Energy", ylabel="DAP")
+
+# ╔═╡ 79e81287-54af-4083-9de0-e82515ef7be3
+@df data marginalkde(:TotalEnergy, :SSP, xlabel="Total Energy", ylabel="SSP")
 
 # ╔═╡ ee0b93ce-1baf-4b71-a23a-81c9279a4f8f
 plot(
@@ -449,7 +532,8 @@ plot(
 
 # ╔═╡ 1806279a-0f67-4658-b5c9-1eebc6ed7919
 plot(
-	layout=(2,1), ylabel="Energy", legend=false, #xticks = (1:7, dayabbr.(1:7)),
+	layout=(3,1), size=(800,900),
+	ylabel="Energy", legend=false, #xticks = (1:7, dayabbr.(1:7)),
 	begin
 		@df data violin(
 			title="Solar",
@@ -471,6 +555,18 @@ plot(
 		)
 		@df data boxplot!(
 			Date.(:timestamp_utc), :Wind, label="Wind",
+			color=:black, α=0.25
+		)
+	end
+	,
+	begin
+		@df data violin(
+			title="Total Energy",
+			Date.(:timestamp_utc), :TotalEnergy, label="TotalEnergy",
+			color=cmap["Total Energy"], α=0.5
+		)
+		@df data boxplot!(
+			Date.(:timestamp_utc), :TotalEnergy, label="TotalEnergy",
 			color=:black, α=0.25
 		)
 	end
@@ -478,7 +574,8 @@ plot(
 
 # ╔═╡ 5f2308de-a8c6-4c36-9bb8-40da9f393bf7
 plot(
-	layout=(2,1), ylabel="Energy", legend=false, xticks = (1:7, dayabbr.(1:7)),
+	layout=(3,1), size=(800, 900),
+	ylabel="Energy", legend=false, xticks = (1:7, dayabbr.(1:7)),
 	begin
 		@df data violin(
 			title="Solar",
@@ -503,11 +600,28 @@ plot(
 			color=:black, α=0.25
 		)
 	end
+		,
+	begin
+		@df data violin(
+			title="Total Energy",
+			dayofweek.(:timestamp_utc), :TotalEnergy, label="Total Energy",
+			color=cmap["Total Energy"], α=0.5
+		)
+		@df data boxplot!(
+			dayofweek.(:timestamp_utc), :TotalEnergy, label="Total Energy",
+			color=:black, α=0.25
+		)
+	end
+
 )
 
 # ╔═╡ 88622208-488a-419f-95d5-641f2a71d7e5
 plot(
-	layout=(2,1), ylabel="Energy", legend=false, xticks=(0:4:23, "$h:00" for h ∈ 0:4:23),
+	layout=(3,1),
+	size=(800,900),
+	ylabel="Energy",
+	legend=false,
+	xticks=(0:4:23, "$h:00" for h ∈ 0:4:23),
 	begin
 		@df data violin(
 			title="Solar",
@@ -529,6 +643,18 @@ plot(
 		)
 		@df data boxplot!(
 			hour.(:timestamp_utc), :Wind, label="Wind",
+			color=:black, α=0.25
+		)
+	end
+	,
+	begin
+		@df data violin(
+			title="Total Energy",
+			hour.(:timestamp_utc), :TotalEnergy, label="Total Energy",
+			color=cmap["Total Energy"], α=0.5
+		)
+		@df data boxplot!(
+			hour.(:timestamp_utc), :TotalEnergy, label="Total Energy",
 			color=:black, α=0.25
 		)
 	end
@@ -539,6 +665,7 @@ begin
 	plot(title="Energy Production Empirical CDF")
 	@df data ecdfplot!(:Wind, label="Wind", color=cmap["Wind"])
 	@df data ecdfplot!(:Solar, label="Solar", color=cmap["Solar"])
+	@df data ecdfplot!(:TotalEnergy, label="Total Energy", color=cmap["Total Energy"])
 end
 
 # ╔═╡ 6cf2abfd-0652-4b0b-8d64-5896c058dc49
@@ -566,15 +693,47 @@ Below, we store the transform information to a `Dict` accessed by the column nam
 
 # ╔═╡ 618271a1-3d80-4eb5-8902-5fdd7b3b648e
 transforms = Dict(
-    names(data)[i] => StatsBase.fit(ZScoreTransform, data[:, i])
+    names(data)[i] => StatsBase.fit(UnitRangeTransform, data[:, i])
     for i in 2:size(data, 2)
 )
 
+# ╔═╡ 160ebfa2-fd91-4ed9-8f6c-f1069aba5a9d
+function to_decimal_hours(timestamp)
+    hours = hour(Time(timestamp))
+    minutes = minute(Time.(timestamp)) / 60
+    return hours + minutes
+end
+
+# ╔═╡ fc7a63b1-1ed7-4567-9c08-dfeedb283d3b
+function to_cos_time(dt)
+	t = Time(dt)
+	t = hour(t) + minute(t)/60
+	ct = cos(t * 2π/24)+1
+	return ct/2 |> Float32
+end
+
 # ╔═╡ 6b5b8d8c-fb5a-42a5-bdb3-36829a16d52f
-function standardize_df(temp_df, xfrms)
+function standardize_df(df, xfrms)
+	temp_df = deepcopy(df)
     for (col_name, transform) in xfrms
         if col_name in names(temp_df)
             temp_df[:, col_name] = StatsBase.transform(transform, temp_df[:, col_name])
+        end
+    end
+
+	temp_df.timestamp_utc = to_cos_time.(temp_df.timestamp_utc)
+
+	rename!(temp_df, :timestamp_utc=>:cos_time)
+	
+    return temp_df
+end
+
+# ╔═╡ 6070b6c9-4f91-4acb-ba65-880bcf4237b1
+function reconstruct_df(df, xfrms)
+	temp_df = deepcopy(df)
+    for (col_name, transform) in xfrms
+        if col_name in names(temp_df)
+            temp_df[:, col_name] = StatsBase.reconstruct(transform, temp_df[:, col_name])
         end
     end
     return temp_df
@@ -631,43 +790,57 @@ This is possible with GRU's (and Recurrent frameworks in general) because they h
 
 # ╔═╡ 96c6f674-1a3b-47de-ab23-bd586fb70448
 function BatchMaker(
-	data, weather_cols, energy_cols;
-	batch_size=5^2)
+	data;
+	weather_cols=weather_cols, energy_cols=energy_cols,
+	batch_size=8
+)
 
-    xfrm = transform(
-		# first, we copy the data (excpet the timestamp column)
-		deepcopy(data[:, [weather_cols; energy_cols]]),
-		# then we transform it according to the `zscore transform`
-		All() .=> zscore, renamecols=false
-	)
-
+    xfrm = standardize_df(data, transforms)
+	
 	# pull the data from the DataFrame to a Matrix
 	# it's already been converted to Float32 so there won't be issues
 	# then we transpose it so that it is in `features` x `time`
 	xfrm = Matrix(xfrm) |> transpose
 
-	batches = [xfrm[:, i:i+(batch_size-1)] for i in 1:size(xfrm, 2)-batch_size]
+	#xfrm = [xfrm[:, i] for i in 1:size(xfrm, 2)]
+	sequence_of_batches = [xfrm[:, i:i+(batch_size-1)] for i in 1:size(xfrm, 2)-(batch_size-1)]
 
-	batches = [(past=batches[i] |> mtl, next=batches[i+1][5:8, :] |> mtl) for i in 1:length(batches)-1]
+	past = sequence_of_batches[1:end-1]
+	next = [sequence_of_batches[i][end-4:end, :] for i in 2:length(sequence_of_batches)]
 	
-	return batches
+	return [(past=p, next=n) for (p, n) in zip(past, next)]
 end
 
 # ╔═╡ 9eb3bc1c-ea1c-4bec-ad7d-02b8f4ad81f0
 begin
-	train_test_ratio = 3/5
-	train_index = 1:Int(floor(size(data, 1) * train_test_ratio))
-	test_index = last(train_index)+1:size(data,1)
+	train_test_ratio = 2/5
+	calib_ratio = 2/5
+	test_ratio = 1-(train_test_ratio+calib_ratio)
 	
-	Train = BatchMaker(data[train_index, :], weather_cols, energy_cols)
-	Test = BatchMaker(data[test_index, :], weather_cols, energy_cols)
-	md"We split the data using the first 3/5 as the training data and latest 2/5 as testing data. The assumption here is that the dynamics are consistent so we don't need to obtain sequences from all over the historic data for training and different sequences for testing. This simplifies data handling and provides more training data because the sequences aren't cut whenever it switches from an observation in the training data to an observation in the testing data and vice-versa."
+	train_index = 1:Int(floor(size(data, 1) * train_test_ratio))
+	calib_index = last(train_index)+1:last(train_index)+Int(floor(size(data, 1) * calib_ratio))
+	test_index = last(calib_index):size(data,1)
+
+	batch_size=2^5
+	
+	Train = BatchMaker(data[train_index, :],
+		batch_size=batch_size
+	)
+	
+	Test = BatchMaker(data[test_index, :],
+			batch_size=batch_size
+	)
+
+	md"splits"
 end
 
-# ╔═╡ 7960fc2d-3d6e-4060-ac80-6a5fd7723c7e
+# ╔═╡ b92061c7-71c3-46dd-a5d7-0ec49511016b
 md"""
-# 4. Forecast Models
+We split the data using the first 3/5 as the training data and latest 2/5 as testing data. The assumption here is that the dynamics are consistent so we don't need to obtain sequences from all over the historic data for training and different sequences for testing. This simplifies data handling and provides more training data because the sequences aren't cut whenever it switches from an observation in the training data to an observation in the testing data and vice-versa.
 """
+
+# ╔═╡ 7960fc2d-3d6e-4060-ac80-6a5fd7723c7e
+md"# 4. Forecast Models"
 
 # ╔═╡ 290ba563-2207-49e9-b966-7b3088e17f79
 md"""
@@ -676,7 +849,7 @@ md"""
 
 # ╔═╡ 1ec722d8-853a-4394-8faa-3cba23c7db78
 md"""
-## 4.2 Gated Recurrent Unit
+## 4.2 Long Short-term Memory
 """
 
 # ╔═╡ f8ee81c8-ee45-49cb-8f60-4585573b9e9e
@@ -686,7 +859,7 @@ md"""
 
 # ╔═╡ 2383bb87-2049-4a07-9b71-eba7b726c4d7
 md"""
-We are using Flux to create a Gated Recurrent Unit followed by Dense layers which will take our input data and output predictions for the energy data. Again, input data consists of historic energy data, historic weather, and weather forecasts for the next 24 hours.
+We are using Flux to create a Long/Short-Term Memory network. We send it processed data and it makes predictions for the energy data.
 """
 
 # ╔═╡ f64e1a46-dd78-4e31-a5ea-b6b32fdaea81
@@ -697,8 +870,8 @@ The plot below shows some activation functions for reference.
 # ╔═╡ 5216be48-4981-4388-b288-ea2353a165bd
 plot(
 	title="Activation Functions",
-	-3:0.25:3, [x->σ(x), x->tanh(x), x->4tanh(x), x->relu(x)],
-	label=["σ" "tanh" "4tanh" "relu"], marker=3
+	-3:0.25:3, [x->σ(x), x->tanh(x), x->3tanh(x), x->relu(x)],
+	label=["σ" "tanh" "3tanh" "relu"], marker=3
 )
 
 # ╔═╡ 3bf6802f-e4a9-4c6d-b5ae-f9750bbe82c4
@@ -713,7 +886,7 @@ md"""
 
 # ╔═╡ c6d8f4ce-475e-4636-980f-faf07b3ebfd9
 md"""
-We will use mean-squared error to train the model. As our model is multivariate output, all errors are treated equally so the optimizer will use loss gradients without weight for any particular variable. This is why we standardized the data so it would all be on roughly the same order of magnitude.
+We will use mean-squared error to train the model. As our model is multivariate output, all errors are treated equally so the optimizer will use loss gradients without weight for any particular variable. This is why we normalized the data so it would all be on roughly the same order of magnitude.
 """
 
 # ╔═╡ cf1455b6-05da-4053-ab07-902153dc0958
@@ -725,44 +898,28 @@ loss(m::Chain, traindata::NamedTuple) = loss(m, traindata.past, traindata.next)
 # ╔═╡ fcf90c27-ab69-4b90-bada-ce30fd1dbd07
 begin
 	# this is the number of features in our data
-	input_dims = length(weather_cols) + length(energy_cols)
+	input_dims = length(weather_cols) + length(energy_cols) + 1
 
 	# this is the number of features we want to output
 	output_dim = length(energy_cols)
 
-	# each dense layer is a square matrix of this size
-	# matrices don't have to be square, but it's simple to have the same
-	# number of inputs and outputs in all of the hidden layers
 	hidden_dim = 2^3
 
 	# the model is created by `Chain`ing layers together.
 	model = Chain(
-		# first layer is a Gated Recurrent Unit
-		GRU(input_dims => hidden_dim),
-		GRU(hidden_dim => hidden_dim),
-		GRU(hidden_dim => hidden_dim),
-
-		# first hidden layer is a dense layer with a relu activation
-		Dense(hidden_dim => hidden_dim, relu),
-		
-		# second hidden layer is a dense layer with identity activation (same as no activation)
-
-		# output layer is activated with 4tanh
-		# restricts data to be between -4 and 4, which will capture 99.9937%
-		# actual extrema of our values is between -3 and 3 so this isn't
-		# really restrictive
-		Dense(hidden_dim => output_dim, y -> 3tanh(y))
-	) |> mtl # send this model to the GPU to accelerate training
+		LSTM_in = LSTM(input_dims => hidden_dim),
+		LSTM_hidden = LSTM(hidden_dim => hidden_dim),
+		Dense_hidden1 = Dense(hidden_dim => hidden_dim),
+		Dense_out = Dense(hidden_dim => output_dim, σ),
+	)
 
 	Flux.reset!(model)
 	train_log = [loss(model, first(Train))]
+	Flux.reset!(model)
 	test_log = [loss(model, first(Test))]
 
-	nothing
+	model
 end	
-
-# ╔═╡ d8048221-286d-413b-bb83-c8be118094e4
-opt_state = Flux.setup(Adam(1e-4), model)
 
 # ╔═╡ ae194c55-8529-4843-9f64-2dde07f08da8
 md"""
@@ -788,217 +945,369 @@ md"""
 ### 4.2.5 Training and Evaluation
 """
 
-# ╔═╡ 7498d60f-8134-4b26-9579-1eea8b6667d9
-md"Run it? $(@bind run_train_loop CheckBox(false))"
-
 # ╔═╡ 3b0b04c2-e89e-4e87-86f0-5a599ed04646
 md"Train epochs: $(
 	@bind train_epochs confirm(
-		Slider(1:10, default=2, show_value=true),
+		Slider(2 .^ (0:1:12), default=2^5, show_value=true),
 		label=\"Send it!\"
 	)
 )"
+
+# ╔═╡ 52210b74-2957-481f-8f36-7b9bdf68c630
+md"Learning Rate, $η$ : $(
+	@bind learning_rate confirm(Slider(-8:1:-1, default=-3, show_value=true))
+)"
+
+# ╔═╡ d8048221-286d-413b-bb83-c8be118094e4
+begin
+	η = round(10.0^learning_rate, digits=8)
+	opt_state = Flux.setup(Adam(η), model)
+end
+
+# ╔═╡ 7498d60f-8134-4b26-9579-1eea8b6667d9
+md"Run it? $(@bind run_train_loop CheckBox(false))"
 
 # ╔═╡ 720e6b90-3e85-4c90-9c54-e8ae469a9cba
 begin
 	if run_train_loop
 		for e in 1:train_epochs
-			temp_train_log = []
+			temp_log = []
 			Flux.reset!(model)
 			model(first(Train).past)
 
 			for T in Train[2:end]
-				train!(
-					opt_state, model, loss, T,
-					train_log=temp_train_log
-					)
+				train!(opt_state, model, loss, T, train_log=temp_log)
 			end
 
-			push!(train_log, mean(temp_train_log))
-		
-			push!(test_log, mean(loss(model, T) for T in Test))
-		end	
+			push!(train_log, mean(temp_log))
+
+			Flux.reset!(model)
+			model(first(Test).past)
+			push!(test_log, mean(loss(model, T) for T in Test[2:end]))
+		end
 	end
 
-	plot([train_log test_log], label=["Train" "Test"], xscale=:log10)
+	plot(
+		title="Loss Logging",
+		xlabel="Total Training Epochs", ylabel="Loss (MSE)",
+		[train_log test_log],
+		label=["Train" "Test"],
+		xticks=2 .^ (0:8),
+		xscale=:log2)
 end
 
-# ╔═╡ 6070b6c9-4f91-4acb-ba65-880bcf4237b1
-function reconstruct_df(temp_df, xfrms)
-    for (col_name, transform) in xfrms
-        if col_name in names(temp_df)
-            temp_df[:, col_name] = StatsBase.reconstruct(transform, temp_df[:, col_name])
-        end
-    end
-    return temp_df
-end
-
-# ╔═╡ ba7dea97-e343-432c-b572-088af7f73144
+# ╔═╡ cc545f2b-37b8-4f00-b551-8e41dfe0d532
 begin
-	start_idx = findfirst(x -> Time(x) == Time(8), data.timestamp_utc)
-	start_idx = 1195
-	startup_window = 7*2*24
-	history = start_idx:start_idx+startup_window
-	horizon = 2*24
+	Flux.reset!(model)
+	[model(T.past) for T in Train[1:end-1]]
+	
+	train_sample = model(last(Train).past) |> transpose
+	
+	Flux.reset!(model)
+	
+	[model(T.past) for T in Test[1:end-1]]
+	test_sample = model(last(Test).past) |> transpose
+	md"Re-evaluating model on test and train data for plotting"
 end
 
-# ╔═╡ 87708768-e42e-4c7d-a4da-d27419acb160
-function forecast(model, data, history; horizon=48)
-	out_data = data[first(history):last(history)+horizon-1, :]
-	
-	past = out_data[1:size(out_data, 1)-48, [weather_cols; energy_cols]]
-	
-	next = out_data[size(out_data, 1)-horizon:end, weather_cols]
+# ╔═╡ 311f71fe-8096-4062-8ded-cfee8dd989b2
+md"#### One-step-ahead Predictions"
 
-	past, next = standardize_df.([past, next], [transforms])
-	
-    past = past |> Matrix |> mtl |> transpose
-	next = next |> Matrix |> mtl |> transpose
+# ╔═╡ e3d9321e-db98-4d28-8c9d-34aebf3fb6cb
+md"##### Train Data"
 
-	Flux.reset!(model)	
+# ╔═╡ 92b957dc-5244-4766-99b1-7c0ea470bef3
+plot(
+	layout=@layout((2,1)), legend=:outertopright,
+	plot(
+		title="True Value",
+		last(Train).next |> transpose,
+		label=["Solar" "Wind" "Total Energy" "DAP" "SSP"],
+		color=[
+			cmap["Solar"] cmap["Wind"] cmap["Total Energy"] cmap["DAP"] cmap["SSP"]
+		]
+		),
+	plot(
+		title="Predictions",
+		train_sample,
+		label=["Solar" "Wind" "Total Energy" "DAP" "SSP"],
+		color=[
+			cmap["Solar"] cmap["Wind"] cmap["Total Energy"] cmap["DAP"] cmap["SSP"]
+		]
+		),
+)
+
+# ╔═╡ c37ec15d-8968-486a-b625-cc337f09c4a5
+md"##### Test Data"
+
+# ╔═╡ 58156220-e508-444d-b4c1-34260fd98037
+plot(
+	layout=@layout((2,1)), legend=:outertopright,
+	plot(
+		title="True Value",
+		last(Test).next |> transpose,
+		label=["Solar" "Wind" "Total Energy" "DAP" "SSP"],
+		color=[
+			cmap["Solar"] cmap["Wind"] cmap["Total Energy"] cmap["DAP"] cmap["SSP"]
+		]
+		),
+	plot(
+		title="Predictions",
+		test_sample,
+		label=["Solar" "Wind" "Total Energy" "DAP" "SSP"],
+		color=[
+			cmap["Solar"] cmap["Wind"] cmap["Total Energy"] cmap["DAP"] cmap["SSP"]
+		]
+		),
+)
+
+# ╔═╡ 7174cf2c-8cf9-4089-8951-5e52a43fe1e1
+md"#### Full day Predictions"
+
+# ╔═╡ da868574-1fc3-494c-b928-bf8c0e0832f7
+md"##### Single Day"
+
+# ╔═╡ 9365ff42-21d4-49da-be59-bbd0d8d78ca7
+md"Forecast for Day: $(@bind forecast_day confirm(Slider(
+	minimum(Date.(data.timestamp_utc))+Day(3):
+	maximum(Date.(data.timestamp_utc)), show_value=true, default=Date(2024,4,1)))
+)"
+
+# ╔═╡ 080d2217-217e-4366-8275-07036daf777b
+md"##### Multiple Day Predictions"
+
+# ╔═╡ b56b7c78-bbb4-4c3c-a49b-4069e809d99f
+md"##### Error Plots"
+
+# ╔═╡ be60977b-84f5-4355-92d5-291843dedf8b
+md"##### Residual Histogram"
+
+# ╔═╡ 3a3a0a71-ebb8-41e4-8d2f-c68c6daaf772
+function forecast(data, firstforecast, lastforecast)
+	firstforecast = findlast(row -> row ≤ firstforecast, data.timestamp_utc)
+	lastforecast = findlast(row -> row < lastforecast, data.timestamp_utc)
 	
-	[model(past[:, i]) for i in 1:size(past, 2)-1]
+	xfrm = standardize_df(data, transforms)
 	
-	results = [model(past[:, size(past, 2)])]
-	
-	for i in 1:size(next, 2)-2
-		new_result = model([next[:, i]; last(results)])
+	M = xfrm |> Matrix |> transpose
+
+	Flux.reset!(model)
+
+	for i in 1:size(M, firstforecast)-1
+		model(M[:, i])
+	end
+
+	results = [model(M[:, firstforecast])]
+	for j in firstforecast+1:lastforecast
+		new_result = model([M[1:5, j];last(results)])
 		push!(results, new_result)
 	end
 
-	results = hcat(results...) |> transpose |> cpu
+	out_df = DataFrame(hcat(results...) |> transpose, energy_cols)
+	out_df.timestamp_utc = data[firstforecast:lastforecast, :timestamp_utc]
+	select!(out_df, :timestamp_utc, :)
+	out_df = reconstruct_df(out_df, transforms)
+end
 
-	results = DataFrame(results, energy_cols)
+# ╔═╡ 114b88c0-27d6-49a9-ba44-d4f78a5d5611
+begin
+	firstforecast = DateTime(forecast_day, Time(8, 30))
+	lastforecast = firstforecast + Hour(24)
+	results = forecast(data, firstforecast, lastforecast)
+end
 
-	results = reconstruct_df(results, transforms)
+# ╔═╡ 4dd60134-242b-4857-aa69-56c55d0021f4
+xticks=range(
+	DateTime(Date(firstforecast),Time(8)),
+	DateTime(Date(firstforecast), Time(8))+Day(1),
+	step=Hour(4)
+)
 
-	rename!(results, names(results) .=> "pred_" .* names(results))
-
-	# Initialize a new DataFrame to append the results to out_data
-
-    n = size(results, 1)
-    append_rows = nrow(out_data) - n
-
-    for col in names(results)
-        out_data[!, col] = [i <= append_rows ? missing : results[i-append_rows, col] for i in 1:nrow(out_data)]
-    end
+# ╔═╡ 3c23a6f7-78f3-4076-9e02-5a0b48c697cb
+begin
+	@df filter(
+		row -> firstforecast ≤ row.timestamp_utc < lastforecast, data
+		) plot(
+		legend=:outertopright,
+		:timestamp_utc,
+		[:Solar, :Wind, :TotalEnergy],
+		labels=["Solar" "Wind" "Total Energy"],
+		color=[cmap["Solar"] cmap["Wind"] cmap["Total Energy"]],
+		line=(1, 0.5)
+	)
 	
-	return out_data
+	@df results plot!(
+		:timestamp_utc,
+		[:Solar, :Wind, :TotalEnergy],
+		labels=["Solar (p)" "Wind (p)" "Total Energy (p)"],
+		color=[cmap["Solar"] cmap["Wind"] cmap["Total Energy"]],
+		line=(2, :dash),
+		xticks=(xticks, every4hrs_date_noon.(xticks))
+	)
 end
 
-# ╔═╡ 3ede6b7e-f9e0-4082-aa1d-5d5cae432092
-data_peak = forecast(
-	model, data,
-	start_idx:start_idx+startup_window,
-	horizon=horizon)
-
-# ╔═╡ f837a733-4468-4af3-9ee5-9845eb9aeda0
+# ╔═╡ a47837ac-8de8-42c9-8ea2-a3ef6619db4c
 begin
-	@df last(data_peak, 100) plot(
+	@df filter(
+		row -> firstforecast ≤ row.timestamp_utc < lastforecast, data
+		) plot(
+		legend=:outertopright,
 		:timestamp_utc,
-		[:pred_DAP :pred_SSP],
-		line=(3, :dash),
-		color=[cmap["DAP"] cmap["SSP"]]
+		[:DAP, :SSP],
+		labels=["DAP" "SSP"],
+		color=[cmap["DAP"] cmap["SSP"]],
+		line=(1, 0.5)
 	)
-
-	@df last(data_peak, 100) plot!(
+	
+	@df results plot!(
 		:timestamp_utc,
-		[:DAP :SSP],
-		line=(1, :solid, 0.1),
-		markershape=:o, ms=3, markerstrokewidth=0.0,
-		color=[cmap["DAP"] cmap["SSP"]]
+		[:DAP, :SSP],
+		labels=[ "DAP (p)" "SSP (p)"],
+		color=[cmap["DAP"] cmap["SSP"]],
+		line=(2, :dash),
+		xticks=(xticks, every4hrs_date_noon.(xticks))
 	)
 end
 
-# ╔═╡ cbe68f3d-e9ed-4b00-8940-7d461c7ffff2
+# ╔═╡ f88ec603-6a91-4c2e-9ab1-9cb1aeb28ab4
+Revenue(Trade, DAP, Actual, SSP) = Trade*DAP + (Actual-Trade) * (SSP - 0.07*(Actual-Trade))
+
+# ╔═╡ fc1bdd7b-3f20-415f-aac2-e1d87c1038f0
 begin
-	@df last(data_peak, 100) plot(
-		:timestamp_utc,
-		[:pred_Solar :pred_Wind],
-		line=(3, :dash),
-		color=[cmap["Solar"] cmap["Wind"]]
-	)
+	predictions = []
+	for d in unique(data.timestamp_utc .|> Date)[2:end]
+		push!(predictions, forecast(
+				data,
+				DateTime(d, Time(8, 30)),
+				DateTime(d, Time(8, 30)) + Hour(24))
+		)
+	end
+	predictions = vcat(predictions...)
+	p_energy_cols = ["$(col)_pred" for col in energy_cols]
+	energy_pairs = energy_cols .=> p_energy_cols
+	rename!(predictions, energy_pairs)
+	leftjoin!(predictions, data, on=:timestamp_utc)
+	predictions.Revenue = Revenue.(
+		predictions.TotalEnergy_pred,
+		predictions.DAP,
+		predictions.TotalEnergy,
+		predictions.SSP)
+	predictions
+end		
 
-	@df last(data_peak, 100) plot!(
-		:timestamp_utc,
-		[:Solar :Wind],
-		line=(1, :solid, 0.1),
-		markershape=:o, ms=3, markerstrokewidth=0.0,
-		color=[cmap["Solar"] cmap["Wind"]]
-	)
-end
-
-# ╔═╡ e3d9321e-db98-4d28-8c9d-34aebf3fb6cb
-md"#### Train Data"
-
-# ╔═╡ 09208e2d-05f1-4e07-92ce-432fc4054e4f
-# ╠═╡ disabled = true
-# ╠═╡ skip_as_script = true
-#=╠═╡
-let train_epochs
-	i = rand(1:length(Train.W)-1)
-	Flux.reset!(future)
-
+# ╔═╡ 3b627bcb-6b24-4caa-93d0-f0ec60d64f33
+@df last(predictions, 250) plot(
+	layout=@layout((3,1)), size=(800, 600), legend=:outertopright,
 	plot(
-		legend=:outertopright,
-		layout=@layout((2,1)),
-		ylims=(-4,4),
-		begin
-			Flux.reset!(future)
-			future(Train.W[i])
-			plot(
-				title="Predict",
-				future(Train.W[i+1]) |> transpose |> cpu,
-				label=["Solar" "Wind" "DAP" "SSP"],
-				color=[cmap["Solar"] cmap["Wind"] cmap["DAP"] cmap["SSP"]],
-			)
-		end,
-		plot(title="True",
-			Train.E[i+1] |> transpose |> cpu,
-			label=["Solar" "Wind" "DAP" "SSP"],
-			color=[cmap["Solar"] cmap["Wind"] cmap["DAP"] cmap["SSP"]],
-		),
-	)
-end
-  ╠═╡ =#
-
-# ╔═╡ c37ec15d-8968-486a-b625-cc337f09c4a5
-md"#### Test Data"
-
-# ╔═╡ a175b44c-3839-4cad-8b6c-27826c99b44e
-# ╠═╡ disabled = true
-# ╠═╡ skip_as_script = true
-#=╠═╡
-let train_epochs
-	i = rand(1:length(Test.W)-1)
-	Flux.reset!(future)
-
+		title="Total Energy",
+		:timestamp_utc, [:TotalEnergy :TotalEnergy_pred],
+		color=cmap["Total Energy"], label=["Y" "Ŷ"], line=[:solid :dash]
+		
+	),
 	plot(
-		legend=:outertopright,
-		layout=@layout((2,1)),
-		ylims=(-4,4),
-		begin
-			Flux.reset!(future)
-			future(Test.W[i])
-			plot(
-				title="Predict",
-				future(Test.W[i+1]) |> transpose |> cpu,
-				label=["Solar" "Wind" "DAP" "SSP"],
-				color=[cmap["Solar"] cmap["Wind"] cmap["DAP"] cmap["SSP"]],
-			)
-		end,
-		plot(title="True",
-			Test.E[i+1] |> transpose |> cpu,
-			label=["Solar" "Wind" "DAP" "SSP"],
-			color=[cmap["Solar"] cmap["Wind"] cmap["DAP"] cmap["SSP"]],
-		),
+		title="Day Ahead Price",
+		:timestamp_utc, [:DAP :DAP_pred],
+		color=cmap["DAP"], label=["Y" "Ŷ"], line=[:solid :dash]
+	),
+	plot(
+		title="Imbalance Price",
+		:timestamp_utc, [:SSP :SSP_pred],
+		color=cmap["SSP"], label=["Y" "Ŷ"], line=[:solid :dash]
+	),
+)
+
+# ╔═╡ c6a5c0c3-b7c7-4987-864b-b69eb48b4f21
+@df last(predictions, 250) plot(
+	layout=@layout((3,1)), legend=:outertopright,
+	plot(
+		:timestamp_utc, :TotalEnergy_pred - :TotalEnergy,
+		label="ΔTotal Energy", color=cmap["Total Energy"]
+	),
+	plot(
+		:timestamp_utc, :DAP_pred - :DAP,
+		label="ΔDAP", color=cmap["DAP"]
+	),
+	plot(
+		:timestamp_utc, :SSP_pred - :SSP,
+		label="ΔSSP", color=cmap["SSP"]
+	),
+)
+
+# ╔═╡ c42de5db-c9b2-4fc0-a8b5-53ce1a818e89
+@df last(predictions, 250)	plot(
+		title="Coherence of Total prediciton and Solar+Wind prediction",
+		:timestamp_utc, [:TotalEnergy_pred :Solar_pred+:Wind_pred :TotalEnergy],
+		label=["Total (p)" "Solar+Wind" "True"],
+		color=[cmap["Total Energy"] cmap["Wind"] :grey],
+		line=[:solid :solid :solid], lw=[2 1 5], lα=[1 1 0.2]
+)
+
+# ╔═╡ 7de3d275-eea4-487f-aa38-2462d440c05e
+@df predictions scatter(
+	title="Surplus/Defecit and Revenue",
+	ylabel="ΔTotal Energy {predicted, actual}",
+	:timestamp_utc, :TotalEnergy_pred - :TotalEnergy, label=false,
+	marker_z=:Revenue/1e3,
+	color=cgrad([:red, :yellow, :green], [0, .71, 1]),
+	ms=5, markerstrokewidth=0.0, mα=0.6,
+	cbartitle="Revenue (thousands \$)"
+)
+
+# ╔═╡ 6d0c90fc-b398-4a63-a129-e950ae84169c
+@df predictions plot(
+	title="Cumulative Earnings",
+	:timestamp_utc, cumsum(:Revenue), label=false,
+	line_z=:TotalEnergy,
+	color=cgrad([:white,:hotpink]), lw=5,
+	cbartitle="Total Energy Production"
+)
+
+# ╔═╡ 7160f04d-d684-403f-8ede-9de2f5997f99
+@df predictions plot(
+	layout=@layout((3,1)), legend=false,
+	
+	histogram(
+		title="Total Energy",
+		:TotalEnergy_pred - :TotalEnergy,
+		color=cmap["Total Energy"]
+	),
+	histogram(
+		title="DAP",
+		:DAP_pred - :DAP,
+		color=cmap["DAP"]
+	),
+	histogram(
+		title="SSP",
+		:SSP_pred - :SSP,
+		color=cmap["SSP"]
 	)
-end
-  ╠═╡ =#
+)
+
+# ╔═╡ de408642-0f01-4832-9e51-37895b3a5ccd
+@df predictions histogram(
+		title="Revenue", legend=false,
+		:Revenue,
+		color=:darkgreen
+	)
+
+# ╔═╡ 8d1110e2-9940-4171-ade1-7eb3c83b9332
+@df predictions ecdfplot(
+		title="Revenue", legend=false,
+		:Revenue,
+		color=:darkgreen
+	)
+
+# ╔═╡ f4106179-42f4-4620-895c-cae10d81d8e6
+data[calib_index, :]
 
 # ╔═╡ 7707022c-7067-4611-b708-79814fab4564
 md"""
-## 4.3 Conformal Model and Model Performance
+# 5. Conformalizing the LSTM Model
+"""
+
+# ╔═╡ d45fe2a2-ca99-4af4-b2cd-86c0824a7cd8
+md"""
+### 5.1 Theory
 """
 
 # ╔═╡ bf15eb86-ab97-417f-b6c1-2da5915bce56
@@ -1006,48 +1315,79 @@ md"""
 Now we take the 
 """
 
+# ╔═╡ daed30c6-0d40-4d03-a33d-ff1f89ef9161
+begin
+	X = [x.past for x in Train]
+	y = [y.next for y in Train]
+end
+
+# ╔═╡ d75c78d4-f545-4b52-a1d7-5c2ff570b172
+builder = MLJFlux.@builder Chain(
+	LSTM_in = LSTM(input_dims => hidden_dim),
+	LSTM_hidden = LSTM(hidden_dim => hidden_dim),
+	Dense_hidden1 = Dense(hidden_dim => hidden_dim),
+	Dense_out = Dense(hidden_dim => output_dim, σ),
+)
+
+# ╔═╡ a805e6a0-58e0-4c06-8a3b-f9ffaf76bf0b
+reg = MultitargetNeuralNetworkRegressor(
+    builder=builder,
+    epochs=2^5,
+    loss=Flux.mse
+)
+
+# ╔═╡ 7741430f-d27a-4adf-988c-5805bd69baae
+mach = machine(reg, X, y)
+
+# ╔═╡ c01d54bb-c161-46ce-b64e-14a2a7c023d0
+models()
+
 # ╔═╡ ccee0fff-b4d7-4594-a2f5-b62318f51588
 md"""
-# 5. Optimal Trading
+# 6. Optimal Trading
 """
 
 # ╔═╡ c47ca169-b110-4691-bdcb-d2c0f13ea64d
 md"""
-## 5.1 Conditional Value at Risk
+## 6.1 Conditional Value at Risk
 All trading will be done with a conditional value at risk which will minimize the operator's risk.
+"""
+
+# ╔═╡ ca473b94-f00f-4ca0-a298-d4e8373aca3b
+md"""
+Here is the function for calcualting revenue for each period according to the competition. Note how the `(Actual-Trade)` serves to reward or punish underestimating or overestimating the production, respectively. Also, the value of SSP relative to the DAP can have significant effects on the total revenue. The $0.07×(Actual-Trade)$ is a competition specific approximation of the effect imbalance has on the price, so the units of this is \$/Power.
+
+|                | SSP < DAP                                             | SSP > DAP |
+| :------------- | :---------------------------------------------------- | :-------- |
+| Actual < Trade | (+) Benefitted from purchasing shortage at lower SSP  | (-) Forced to buy shortage at higher SSP                  |
+| Actual > Trade | (-) Could have sold more at DAP                       | (+) Benefitted from selling excess at higher price |
 """
 
 # ╔═╡ 252fd0dc-e692-4429-903c-fcf7058e3f0b
 md"""
-# 6. Performance Evaluation
+# 7. Performance Evaluation
 """
 
 # ╔═╡ 66cdd4d2-9e24-442e-bec0-e2c6c8a226e4
 md"""
-# 7. Conclusion
+# 8. Conclusion
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-ConformalPrediction = "98bfc277-1877-43dc-819b-a3e38c30242f"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
-MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
-Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
 [compat]
 CSV = "~0.10.13"
-ConformalPrediction = "~0.1.6"
 DataFrames = "~1.6.1"
 Flux = "~0.14.15"
-MLJFlux = "~0.4.0"
-Metal = "~1.0.0"
 PlutoUI = "~0.7.58"
 StatsBase = "~0.33.21"
 StatsPlots = "~0.15.7"
@@ -1059,7 +1399,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.2"
 manifest_format = "2.0"
-project_hash = "7857d9b128007fbde76f20021ffdb30181f24459"
+project_hash = "628f8237e5feb06fd7281ae9a6c43fef17931e69"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1124,11 +1464,6 @@ git-tree-sha1 = "01b8ccb13d68535d73d2b0c23e39bd23155fb712"
 uuid = "13072b0f-2c55-5437-9ae7-d433b7a33950"
 version = "1.1.0"
 
-[[deps.BSON]]
-git-tree-sha1 = "4c3e506685c527ac6a54ccc0c8c76fd6f91b42fb"
-uuid = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
-version = "0.3.9"
-
 [[deps.BangBang]]
 deps = ["Compat", "ConstructionBase", "InitialValues", "LinearAlgebra", "Requires", "Setfield", "Tables"]
 git-tree-sha1 = "7aa7ad1682f3d5754e3491bb59b8103cae28e3a3"
@@ -1191,41 +1526,11 @@ git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
 uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
 
-[[deps.CategoricalArrays]]
-deps = ["DataAPI", "Future", "Missings", "Printf", "Requires", "Statistics", "Unicode"]
-git-tree-sha1 = "1568b28f91293458345dabba6a5ea3f183250a61"
-uuid = "324d7699-5711-5eae-9e2f-1d82baa6b597"
-version = "0.10.8"
-
-    [deps.CategoricalArrays.extensions]
-    CategoricalArraysJSONExt = "JSON"
-    CategoricalArraysRecipesBaseExt = "RecipesBase"
-    CategoricalArraysSentinelArraysExt = "SentinelArrays"
-    CategoricalArraysStructTypesExt = "StructTypes"
-
-    [deps.CategoricalArrays.weakdeps]
-    JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
-    RecipesBase = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
-    SentinelArrays = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
-    StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
-
-[[deps.CategoricalDistributions]]
-deps = ["CategoricalArrays", "Distributions", "Missings", "OrderedCollections", "Random", "ScientificTypes"]
-git-tree-sha1 = "926862f549a82d6c3a7145bc7f1adff2a91a39f0"
-uuid = "af321ab8-2d2e-40a6-b165-3d674595d28e"
-version = "0.1.15"
-
-    [deps.CategoricalDistributions.extensions]
-    UnivariateFiniteDisplayExt = "UnicodePlots"
-
-    [deps.CategoricalDistributions.weakdeps]
-    UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
-
 [[deps.ChainRules]]
 deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "SparseInverseSubset", "Statistics", "StructArrays", "SuiteSparse"]
-git-tree-sha1 = "4e42872be98fa3343c4f8458cbda8c5c6a6fa97c"
+git-tree-sha1 = "3e79289d94b579d81618f4c7c974bb9390dab493"
 uuid = "082447d4-558c-5d27-93f4-14fc19e9eca2"
-version = "1.63.0"
+version = "1.64.0"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra"]
@@ -1309,22 +1614,11 @@ version = "0.1.2"
     [deps.CompositionsBase.weakdeps]
     InverseFunctions = "3587e190-3f89-42d0-90ee-14403ec27112"
 
-[[deps.ComputationalResources]]
-git-tree-sha1 = "52cb3ec90e8a8bea0e62e275ba577ad0f74821f7"
-uuid = "ed09eef8-17a6-5b46-8889-db040fac31e3"
-version = "0.3.2"
-
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
 git-tree-sha1 = "6cbbd4d241d7e6579ab354737f4dd95ca43946e1"
 uuid = "f0e56b4a-5159-44fe-b623-3e5288b988bb"
 version = "2.4.1"
-
-[[deps.ConformalPrediction]]
-deps = ["CategoricalArrays", "MLJBase", "MLJModelInterface", "NaturalSort", "Plots", "StatsBase"]
-git-tree-sha1 = "ee084331dcb2772dbd25a7c6afcaa664f36a0f04"
-uuid = "98bfc277-1877-43dc-819b-a3e38c30242f"
-version = "0.1.6"
 
 [[deps.ConstructionBase]]
 deps = ["LinearAlgebra"]
@@ -1471,11 +1765,6 @@ git-tree-sha1 = "4558ab818dcceaab612d1bb8c19cee87eda2b83c"
 uuid = "2e619515-83b5-522b-bb60-26c02a35a201"
 version = "2.5.0+0"
 
-[[deps.ExprTools]]
-git-tree-sha1 = "27415f162e6028e81c72b82ef756bf321213b6ec"
-uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
-version = "0.1.10"
-
 [[deps.FFMPEG]]
 deps = ["FFMPEG_jll"]
 git-tree-sha1 = "b57e3acbe22f8484b4b5ff66a7499717fe1a9cc8"
@@ -1511,12 +1800,6 @@ deps = ["ContextVariablesX"]
 git-tree-sha1 = "656f7a6859be8673bf1f35da5670246b923964f7"
 uuid = "b9860ae5-e623-471e-878b-f6a53c775ea6"
 version = "0.1.1"
-
-[[deps.FileIO]]
-deps = ["Pkg", "Requires", "UUIDs"]
-git-tree-sha1 = "82d8afa92ecf4b52d78d869f038ebfb881267322"
-uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
-version = "1.16.3"
 
 [[deps.FilePathsBase]]
 deps = ["Compat", "Dates", "Mmap", "Printf", "Test", "UUIDs"]
@@ -1623,12 +1906,6 @@ deps = ["Adapt"]
 git-tree-sha1 = "ec632f177c0d990e64d955ccc1b8c04c485a0950"
 uuid = "46192b85-c4d5-4398-a991-12ede77f4527"
 version = "0.1.6"
-
-[[deps.GPUCompiler]]
-deps = ["ExprTools", "InteractiveUtils", "LLVM", "Libdl", "Logging", "Scratch", "TimerOutputs", "UUIDs"]
-git-tree-sha1 = "a846f297ce9d09ccba02ead0cae70690e072a119"
-uuid = "61eb1bfa-7361-4325-ad38-22787b887f55"
-version = "0.25.0"
 
 [[deps.GR]]
 deps = ["Artifacts", "Base64", "DelimitedFiles", "Downloads", "GR_jll", "HTTP", "JSON", "Libdl", "LinearAlgebra", "Pkg", "Preferences", "Printf", "Random", "Serialization", "Sockets", "TOML", "Tar", "Test", "UUIDs", "p7zip_jll"]
@@ -1752,12 +2029,6 @@ version = "0.2.2"
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
-
-[[deps.JLD2]]
-deps = ["FileIO", "MacroTools", "Mmap", "OrderedCollections", "Pkg", "PrecompileTools", "Printf", "Reexport", "Requires", "TranscodingStreams", "UUIDs"]
-git-tree-sha1 = "5ea6acdd53a51d897672edb694e3cc2912f3f8a7"
-uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
-version = "0.4.46"
 
 [[deps.JLFzf]]
 deps = ["Pipe", "REPL", "Random", "fzf_jll"]
@@ -1891,12 +2162,6 @@ deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll"]
 uuid = "e37daf67-58a4-590a-8e99-b0245dd2ffc5"
 version = "1.6.4+0"
 
-[[deps.LibMPDec_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "6eaa22a233f28bc5d6092f3f8e685f85080fba11"
-uuid = "7106de7a-f406-5ef1-84f7-3345f7341bd2"
-version = "2.5.1+0"
-
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
@@ -1982,16 +2247,6 @@ git-tree-sha1 = "c1dd6d7978c12545b4179fb6153b9250c96b0075"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.0.3"
 
-[[deps.LossFunctions]]
-deps = ["Markdown", "Requires", "Statistics"]
-git-tree-sha1 = "df9da07efb9b05ca7ef701acec891ee8f73c99e2"
-uuid = "30fc2ffe-d236-52d8-8643-a9d8f7c094a7"
-version = "0.11.1"
-weakdeps = ["CategoricalArrays"]
-
-    [deps.LossFunctions.extensions]
-    LossFunctionsCategoricalArraysExt = "CategoricalArrays"
-
 [[deps.MIMEs]]
 git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
 uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
@@ -2002,24 +2257,6 @@ deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl"]
 git-tree-sha1 = "72dc3cf284559eb8f53aa593fe62cb33f83ed0c0"
 uuid = "856f044c-d86e-5d09-b602-aeab76dc8ba7"
 version = "2024.0.0+0"
-
-[[deps.MLJBase]]
-deps = ["CategoricalArrays", "CategoricalDistributions", "ComputationalResources", "Dates", "DelimitedFiles", "Distributed", "Distributions", "InteractiveUtils", "InvertedIndices", "LinearAlgebra", "LossFunctions", "MLJModelInterface", "Missings", "OrderedCollections", "Parameters", "PrettyTables", "ProgressMeter", "Random", "ScientificTypes", "Serialization", "StatisticalTraits", "Statistics", "StatsBase", "Tables"]
-git-tree-sha1 = "0b7307d1a7214ec3c0ba305571e713f9492ea984"
-uuid = "a7f614a8-145f-11e9-1d2a-a57a1082229d"
-version = "0.21.14"
-
-[[deps.MLJFlux]]
-deps = ["CategoricalArrays", "ColorTypes", "ComputationalResources", "Flux", "MLJModelInterface", "Metalhead", "ProgressMeter", "Random", "Statistics", "Tables"]
-git-tree-sha1 = "72935b7de07a7f6b72fd49ecc7898dac79248d46"
-uuid = "094fc8d1-fd35-5302-93ea-dabda2abf845"
-version = "0.4.0"
-
-[[deps.MLJModelInterface]]
-deps = ["Random", "ScientificTypesBase", "StatisticalTraits"]
-git-tree-sha1 = "d2a45e1b5998ba3fdfb6cfe0c81096d4c7fb40e7"
-uuid = "e80e1ace-859a-464e-9ed9-23947d8ae3ea"
-version = "1.9.6"
 
 [[deps.MLStyle]]
 git-tree-sha1 = "bc38dff0548128765760c79eb7388a4b37fae2c8"
@@ -2057,34 +2294,6 @@ version = "2.28.2+1"
 git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
 uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 version = "0.3.2"
-
-[[deps.Metal]]
-deps = ["Adapt", "Artifacts", "CEnum", "ExprTools", "GPUArrays", "GPUCompiler", "KernelAbstractions", "LLVM", "LinearAlgebra", "Metal_LLVM_Tools_jll", "ObjectFile", "ObjectiveC", "Printf", "Python_jll", "Random", "Reexport", "Requires", "StaticArrays"]
-git-tree-sha1 = "ef35a7d2186689a1aebbd807b48fdbdc5e44ba6f"
-uuid = "dde4c033-4e86-420c-a63e-0dd931031962"
-version = "1.0.0"
-weakdeps = ["SpecialFunctions"]
-
-    [deps.Metal.extensions]
-    SpecialFunctionsExt = "SpecialFunctions"
-
-[[deps.Metal_LLVM_Tools_jll]]
-deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl", "TOML", "Zlib_jll"]
-git-tree-sha1 = "7fb1688d2e08c6e08840b41d9d46510f105b20e6"
-uuid = "0418c028-ff8c-56b8-a53e-0f9676ed36fc"
-version = "0.5.1+0"
-
-[[deps.Metalhead]]
-deps = ["Artifacts", "BSON", "ChainRulesCore", "Flux", "Functors", "JLD2", "LazyArtifacts", "MLUtils", "NNlib", "PartialFunctions", "Random", "Statistics"]
-git-tree-sha1 = "5aac9a2b511afda7bf89df5044a2e0b429f83152"
-uuid = "dbeba491-748d-5e0e-a39e-b530a07fa0cc"
-version = "0.9.3"
-
-    [deps.Metalhead.extensions]
-    MetalheadCUDAExt = "CUDA"
-
-    [deps.Metalhead.weakdeps]
-    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
 [[deps.MicroCollections]]
 deps = ["BangBang", "InitialValues", "Setfield"]
@@ -2141,11 +2350,6 @@ git-tree-sha1 = "1a0fa0e9613f46c9b8c11eee38ebb4f590013c5e"
 uuid = "71a1bf82-56d0-4bbc-8a3c-48b961074391"
 version = "0.1.5"
 
-[[deps.NaturalSort]]
-git-tree-sha1 = "eda490d06b9f7c00752ee81cfa451efe55521e21"
-uuid = "c020b1a1-e9b0-503a-9c33-f039bfc54a85"
-version = "1.0.0"
-
 [[deps.NearestNeighbors]]
 deps = ["Distances", "StaticArrays"]
 git-tree-sha1 = "ded64ff6d4fdd1cb68dfcbb818c69e144a5b2e4c"
@@ -2155,18 +2359,6 @@ version = "0.4.16"
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.2.0"
-
-[[deps.ObjectFile]]
-deps = ["Reexport", "StructIO"]
-git-tree-sha1 = "195e0a19842f678dd3473ceafbe9d82dfacc583c"
-uuid = "d8793406-e978-5875-9003-1fc021f44a92"
-version = "0.4.1"
-
-[[deps.ObjectiveC]]
-deps = ["CEnum", "Preferences"]
-git-tree-sha1 = "9abcf85a7e05283fdac7fa0b2d46511f35c875ee"
-uuid = "e86c9b32-1129-44ac-8ea0-90d5bb39ded9"
-version = "1.1.0"
 
 [[deps.Observables]]
 git-tree-sha1 = "7438a59546cf62428fc9d1bc94729146d37a7225"
@@ -2224,9 +2416,9 @@ version = "0.5.5+0"
 
 [[deps.Optimisers]]
 deps = ["ChainRulesCore", "Functors", "LinearAlgebra", "Random", "Statistics"]
-git-tree-sha1 = "264b061c1903bc0fe9be77cb9050ebacff66bb63"
+git-tree-sha1 = "6572fe0c5b74431aaeb0b18a4aa5ef03c84678be"
 uuid = "3bd65402-5787-11e9-1adc-39752487f4e2"
-version = "0.3.2"
+version = "0.3.3"
 
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2250,23 +2442,11 @@ git-tree-sha1 = "949347156c25054de2db3b166c52ac4728cbad65"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
 version = "0.11.31"
 
-[[deps.Parameters]]
-deps = ["OrderedCollections", "UnPack"]
-git-tree-sha1 = "34c0e9ad262e5f7fc75b10a9952ca7692cfc5fbe"
-uuid = "d96e819e-fc66-5662-9728-84c9c7592b0a"
-version = "0.12.3"
-
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
 git-tree-sha1 = "8489905bcdbcfac64d1daa51ca07c0d8f0283821"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "2.8.1"
-
-[[deps.PartialFunctions]]
-deps = ["MacroTools"]
-git-tree-sha1 = "47b49a4dbc23b76682205c646252c0f9e1eb75af"
-uuid = "570af359-4316-4cb7-8c74-252c00c2016b"
-version = "1.2.0"
 
 [[deps.Pipe]]
 git-tree-sha1 = "6842804e7867b115ca9de748a0cf6b364523c16d"
@@ -2361,18 +2541,6 @@ git-tree-sha1 = "80d919dee55b9c50e8d9e2da5eeafff3fe58b539"
 uuid = "33c8b6b6-d38a-422a-b730-caa89a2f386c"
 version = "0.1.4"
 
-[[deps.ProgressMeter]]
-deps = ["Distributed", "Printf"]
-git-tree-sha1 = "763a8ceb07833dd51bb9e3bbca372de32c0605ad"
-uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
-version = "1.10.0"
-
-[[deps.Python_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Expat_jll", "JLLWrappers", "LibMPDec_jll", "Libdl", "Libffi_jll", "OpenSSL_jll", "SQLite_jll", "XZ_jll", "Zlib_jll"]
-git-tree-sha1 = "da243e7064d1be1fea4be656bfda5f6ca949471a"
-uuid = "93d3a430-8e7c-50da-8e8d-3dfcfb3baf05"
-version = "3.10.14+0"
-
 [[deps.Qt6Base_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Fontconfig_jll", "Glib_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "OpenSSL_jll", "Vulkan_Loader_jll", "Xorg_libSM_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Xorg_libxcb_jll", "Xorg_xcb_util_cursor_jll", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_keysyms_jll", "Xorg_xcb_util_renderutil_jll", "Xorg_xcb_util_wm_jll", "Zlib_jll", "libinput_jll", "xkbcommon_jll"]
 git-tree-sha1 = "37b7bb7aabf9a085e0044307e1717436117f2b3b"
@@ -2453,23 +2621,6 @@ version = "0.4.0+0"
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 version = "0.7.0"
-
-[[deps.SQLite_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
-git-tree-sha1 = "75e28667a36b5650b5cc4baa266c5760c3672275"
-uuid = "76ed43ae-9a5d-5a62-8c75-30186b810ce8"
-version = "3.45.0+0"
-
-[[deps.ScientificTypes]]
-deps = ["CategoricalArrays", "ColorTypes", "Dates", "Distributions", "PrettyTables", "Reexport", "ScientificTypesBase", "StatisticalTraits", "Tables"]
-git-tree-sha1 = "75ccd10ca65b939dab03b812994e571bf1e3e1da"
-uuid = "321657f4-b219-11e9-178b-2701a2544e81"
-version = "3.0.2"
-
-[[deps.ScientificTypesBase]]
-git-tree-sha1 = "a8e18eb383b5ecf1b5e6fc237eb39255044fd92b"
-uuid = "30f210dd-8aff-4c5f-94ba-8e64358c1161"
-version = "3.0.0"
 
 [[deps.Scratch]]
 deps = ["Dates"]
@@ -2570,12 +2721,6 @@ git-tree-sha1 = "36b3d696ce6366023a0ea192b4cd442268995a0d"
 uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
 version = "1.4.2"
 
-[[deps.StatisticalTraits]]
-deps = ["ScientificTypesBase"]
-git-tree-sha1 = "30b9236691858e13f167ce829490a68e1a597782"
-uuid = "64bff920-2084-43da-a3e6-9bb72801c0c9"
-version = "3.2.0"
-
 [[deps.Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -2632,12 +2777,6 @@ weakdeps = ["Adapt", "GPUArraysCore", "SparseArrays", "StaticArrays"]
     StructArraysSparseArraysExt = "SparseArrays"
     StructArraysStaticArraysExt = "StaticArrays"
 
-[[deps.StructIO]]
-deps = ["Test"]
-git-tree-sha1 = "010dc73c7146869c042b49adcdb6bf528c12e859"
-uuid = "53d494c1-5632-5724-8f4c-31dff12d585f"
-version = "0.3.0"
-
 [[deps.SuiteSparse]]
 deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
 uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
@@ -2685,12 +2824,6 @@ version = "0.1.1"
 deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
-[[deps.TimerOutputs]]
-deps = ["ExprTools", "Printf"]
-git-tree-sha1 = "f548a9e9c490030e545f72074a41edfd0e5bcdd7"
-uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
-version = "0.5.23"
-
 [[deps.TranscodingStreams]]
 git-tree-sha1 = "71509f04d045ec714c4748c785a59045c3736349"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
@@ -2733,11 +2866,6 @@ version = "1.5.1"
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
 uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
-
-[[deps.UnPack]]
-git-tree-sha1 = "387c1f73762231e86e0c9c5443ce3b4a0a9a0c2b"
-uuid = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
-version = "1.0.2"
 
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
@@ -3134,7 +3262,8 @@ version = "1.4.1+1"
 # ╟─4d6fe02c-78b7-45a0-b8da-1c6cd9712b84
 # ╟─5d901945-77b9-4298-ae4c-7f89f3b5d87f
 # ╟─b1178733-e724-4622-9cd7-3c3c4a58d44a
-# ╟─2940b832-970b-4538-ab11-e2a3836226f2
+# ╠═1dc18c4d-5dbe-460d-ac84-28e1ac6dbab5
+# ╠═2940b832-970b-4538-ab11-e2a3836226f2
 # ╟─ba88b58c-da54-42be-960b-d9f364b3cc30
 # ╟─c52230e8-68db-44cf-9116-88fd650ee9de
 # ╟─b8d205f1-671c-4b78-acf3-fa90f8ae9998
@@ -3146,10 +3275,14 @@ version = "1.4.1+1"
 # ╟─87992e42-ed6a-478c-b468-a6017f2083c9
 # ╟─8555d123-e074-4242-9138-75e63983b9d3
 # ╟─c8a64528-2a86-4806-8949-949e0e12c5ff
+# ╟─d513b0d2-8719-4328-86af-75d2b5bdc829
+# ╟─2a9b7009-3ac7-4431-8806-af081d5435c2
 # ╟─83f8334c-494a-412b-989e-0d7caf412d58
 # ╟─e84757f5-eeed-4409-badc-899a2583a6bc
 # ╟─a863584b-3611-4130-b162-7966859fb891
 # ╟─772072d2-fc85-4ce5-8c10-294512978b81
+# ╟─da3f2a32-653e-4ea0-8e14-f3731ba1b056
+# ╟─79e81287-54af-4083-9de0-e82515ef7be3
 # ╟─ee0b93ce-1baf-4b71-a23a-81c9279a4f8f
 # ╟─470213e1-dc5e-4d32-acce-dff405aba7c2
 # ╟─9aca9018-e6cc-48a6-adae-53d09cdb0339
@@ -3162,11 +3295,15 @@ version = "1.4.1+1"
 # ╟─79337a1e-f774-42b9-9ce4-5f78b8dacd6c
 # ╟─1f2ef155-c827-400f-8f34-9ead965a4831
 # ╠═618271a1-3d80-4eb5-8902-5fdd7b3b648e
+# ╠═160ebfa2-fd91-4ed9-8f6c-f1069aba5a9d
 # ╠═6b5b8d8c-fb5a-42a5-bdb3-36829a16d52f
+# ╠═fc7a63b1-1ed7-4567-9c08-dfeedb283d3b
+# ╠═6070b6c9-4f91-4acb-ba65-880bcf4237b1
 # ╟─6f987b3d-5726-41eb-8bd5-7a70f31e7af5
 # ╟─9a9adfc7-e4cb-479b-a572-304cc0ad8cb5
 # ╠═96c6f674-1a3b-47de-ab23-bd586fb70448
-# ╟─9eb3bc1c-ea1c-4bec-ad7d-02b8f4ad81f0
+# ╠═9eb3bc1c-ea1c-4bec-ad7d-02b8f4ad81f0
+# ╟─b92061c7-71c3-46dd-a5d7-0ec49511016b
 # ╟─7960fc2d-3d6e-4060-ac80-6a5fd7723c7e
 # ╟─290ba563-2207-49e9-b966-7b3088e17f79
 # ╟─1ec722d8-853a-4394-8faa-3cba23c7db78
@@ -3184,23 +3321,49 @@ version = "1.4.1+1"
 # ╟─ae194c55-8529-4843-9f64-2dde07f08da8
 # ╠═92e26370-e4f1-4b24-b48f-01384cd5a4d0
 # ╟─4a84f584-18be-41a2-aab7-186204a09b03
-# ╟─7498d60f-8134-4b26-9579-1eea8b6667d9
 # ╟─3b0b04c2-e89e-4e87-86f0-5a599ed04646
+# ╟─52210b74-2957-481f-8f36-7b9bdf68c630
+# ╟─7498d60f-8134-4b26-9579-1eea8b6667d9
 # ╠═720e6b90-3e85-4c90-9c54-e8ae469a9cba
-# ╠═3ede6b7e-f9e0-4082-aa1d-5d5cae432092
-# ╠═f837a733-4468-4af3-9ee5-9845eb9aeda0
-# ╟─cbe68f3d-e9ed-4b00-8940-7d461c7ffff2
-# ╠═6070b6c9-4f91-4acb-ba65-880bcf4237b1
-# ╠═ba7dea97-e343-432c-b572-088af7f73144
-# ╠═87708768-e42e-4c7d-a4da-d27419acb160
+# ╟─cc545f2b-37b8-4f00-b551-8e41dfe0d532
+# ╟─311f71fe-8096-4062-8ded-cfee8dd989b2
 # ╟─e3d9321e-db98-4d28-8c9d-34aebf3fb6cb
-# ╠═09208e2d-05f1-4e07-92ce-432fc4054e4f
+# ╟─92b957dc-5244-4766-99b1-7c0ea470bef3
 # ╟─c37ec15d-8968-486a-b625-cc337f09c4a5
-# ╟─a175b44c-3839-4cad-8b6c-27826c99b44e
+# ╟─58156220-e508-444d-b4c1-34260fd98037
+# ╟─7174cf2c-8cf9-4089-8951-5e52a43fe1e1
+# ╟─da868574-1fc3-494c-b928-bf8c0e0832f7
+# ╟─9365ff42-21d4-49da-be59-bbd0d8d78ca7
+# ╟─3c23a6f7-78f3-4076-9e02-5a0b48c697cb
+# ╟─a47837ac-8de8-42c9-8ea2-a3ef6619db4c
+# ╟─080d2217-217e-4366-8275-07036daf777b
+# ╟─3b627bcb-6b24-4caa-93d0-f0ec60d64f33
+# ╟─b56b7c78-bbb4-4c3c-a49b-4069e809d99f
+# ╟─c6a5c0c3-b7c7-4987-864b-b69eb48b4f21
+# ╟─c42de5db-c9b2-4fc0-a8b5-53ce1a818e89
+# ╟─7de3d275-eea4-487f-aa38-2462d440c05e
+# ╟─6d0c90fc-b398-4a63-a129-e950ae84169c
+# ╟─be60977b-84f5-4355-92d5-291843dedf8b
+# ╟─7160f04d-d684-403f-8ede-9de2f5997f99
+# ╟─de408642-0f01-4832-9e51-37895b3a5ccd
+# ╟─8d1110e2-9940-4171-ade1-7eb3c83b9332
+# ╟─4dd60134-242b-4857-aa69-56c55d0021f4
+# ╟─114b88c0-27d6-49a9-ba44-d4f78a5d5611
+# ╟─fc1bdd7b-3f20-415f-aac2-e1d87c1038f0
+# ╠═3a3a0a71-ebb8-41e4-8d2f-c68c6daaf772
+# ╟─f88ec603-6a91-4c2e-9ab1-9cb1aeb28ab4
+# ╠═f4106179-42f4-4620-895c-cae10d81d8e6
 # ╟─7707022c-7067-4611-b708-79814fab4564
+# ╟─d45fe2a2-ca99-4af4-b2cd-86c0824a7cd8
 # ╟─bf15eb86-ab97-417f-b6c1-2da5915bce56
+# ╠═daed30c6-0d40-4d03-a33d-ff1f89ef9161
+# ╠═d75c78d4-f545-4b52-a1d7-5c2ff570b172
+# ╠═a805e6a0-58e0-4c06-8a3b-f9ffaf76bf0b
+# ╠═7741430f-d27a-4adf-988c-5805bd69baae
+# ╠═c01d54bb-c161-46ce-b64e-14a2a7c023d0
 # ╟─ccee0fff-b4d7-4594-a2f5-b62318f51588
 # ╟─c47ca169-b110-4691-bdcb-d2c0f13ea64d
+# ╟─ca473b94-f00f-4ca0-a298-d4e8373aca3b
 # ╟─252fd0dc-e692-4429-903c-fcf7058e3f0b
 # ╟─66cdd4d2-9e24-442e-bec0-e2c6c8a226e4
 # ╟─00000000-0000-0000-0000-000000000001
