@@ -22,9 +22,6 @@ variables = ["market_index",
                  "solar_total_production",
                  "solar_and_wind_forecast"]
 
-# ╔═╡ 7172935d-4765-4db2-b98e-deb23702e93c
-@df prices plot(:timestamp_utc, [:dayahead_price :imbalance_price])
-
 # ╔═╡ 9100784e-9586-437b-baf7-8a7e9336ff9a
 md"""
 - day ahead up to about 2 days ago?
@@ -32,9 +29,6 @@ md"""
 - not sure why there is a crazy difference between predicted and actual
 - predict 
 """
-
-# ╔═╡ bad8f513-71de-49c7-b5ba-3c330a6d4970
-@df prices histogram(:imbalance_price)
 
 # ╔═╡ 0a216146-0142-4895-ac20-0e67ef35d883
 null_date(d) = DataFrame(
@@ -212,8 +206,14 @@ begin
 	
 end
 
+# ╔═╡ 7172935d-4765-4db2-b98e-deb23702e93c
+@df prices plot(:timestamp_utc, [:dayahead_price :imbalance_price])
+
 # ╔═╡ 524ceb3b-43b8-4fd3-91db-c279ccabbdef
 prices
+
+# ╔═╡ bad8f513-71de-49c7-b5ba-3c330a6d4970
+@df prices histogram(:imbalance_price)
 
 # ╔═╡ 174acb41-78f2-4a4a-b762-8c5454db52d3
 begin
@@ -276,7 +276,7 @@ StatsPlots = "~0.15.7"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.2"
+julia_version = "1.10.3"
 manifest_format = "2.0"
 project_hash = "5d0165ce4125eb6ef0f7a04f1831b0da0f107554"
 
@@ -427,7 +427,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.1.0+0"
+version = "1.1.1+0"
 
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
