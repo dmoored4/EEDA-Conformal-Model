@@ -1,0 +1,212 @@
+---
+title: "Conformalizing an LSTM to Optimize Revenue for a Renewable Energy Operator using Conditional Value at Risk"
+subtitle: Energy Markets and Data Analytics, Rutgers, Spring 2024, Dr. Robert Mieth
+author: "Daniel Moore, Laila Saleh"
+date: "2024-5-8"
+abstract: "We optimized the market trading of a renewable energy generation operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end work flow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. Obviously this is financially beneficial to the individual operator, but taken to a larget scale this methodology increases the incentive for renewable generation participation which should drive cost and emmissions down. This work carried out on a small number of features with great results, so it is expected that further studies and more advance models with the same architecture would provide better yield."
+
+format:
+  pdf:
+    toc: true
+    number-depth: 2
+    number-sections: true
+    
+    lot: true
+    tbl-cap-location: top
+    df-print: kable
+
+    lof: true
+    fig-align: center
+    fig-cap-location: bottom
+    
+execute: 
+  echo: FALSE
+
+engine: julia
+---
+
+```{julia}
+#| label: loading-packages
+#| output: false
+using Dates
+using CSV, DataFrames, StatsPlots
+using Flux
+
+gr(
+  fontfamily=:Times,
+  fmt = :svg
+)
+```
+
+# Introduction
+What is the problem
+
+## Motivation
+Why do we want to do this
+
+## Objectives
+What are we going to do
+
+## Literature Review
+What have other people done
+
+# Data Analysis
+What do we know?
+
+## Data Summary
+
+```{julia}
+#| label: loading-data
+#| output: false
+
+# read data to DataFrame
+data = DataFrame(CSV.File("src/data/data_rebase.csv"))
+
+# select and rename columns
+select!(data,
+  :timestamp_utc=>:DateTime,
+  :solar_act=>:Solar,
+  :wind_act=>:Wind,
+  :dayahead_price=>:DAP,
+  :imbalance_price=>:SSP
+)
+
+# get rid of any which have missing data
+filter!(row -> !any(ismissing, row), data)
+
+
+# add column which is the total energy production
+data.TotalEnergy = data.Solar + data.Wind
+
+select!(data, :DateTime, :Solar, :Wind, :TotalEnergy, :)
+
+energy_cols = names(data)[2:end] .|> Symbol
+
+weather_cols = [:temp, :windspeed, :winddir, :cloudcover]
+
+let weather = DataFrame(CSV.File("src/data/hornsea 2024-02-29 to 2024-04-06.csv"))
+  
+  select!(weather,
+    :datetime=>:DateTime, weather_cols)
+
+  data.temp_time = floor.(data.DateTime, Hour(1))
+
+  sort!(
+    leftjoin!(data, weather, on=:DateTime)
+  )
+
+  unique!(filter!(row -> !any(ismissing, row), data))
+
+  select!(data, :DateTime, weather_cols, energy_cols)
+
+  # convert all numerics to Float32
+  data[!, Not(:DateTime)] = convert.(Float32, data[!, Not(:DateTime)])
+end
+```
+
+
+```{julia}
+#| label: rebase-data
+#| tbl-cap: "Data from RebaseAPI"
+data[201:205,  [:DateTime; energy_cols]]
+```
+
+```{julia}
+#| label: rebase-data-summary
+#| tbl-cap: "Ennergy Data Summary"
+describe(data, :mean, :min, :median, :max, cols=energy_cols)
+```
+
+```{julia}
+#| label: weather-data
+#| tbl-cap: "Data from VisualCrossing"
+data[201:205, [:DateTime; weather_cols]]
+```
+
+```{julia}
+#| label: weather-data-summary
+#| tbl-cap: "Weather Data Summary"
+describe(data, :mean, :min, :median, :max, cols=[:DateTime; weather_cols])
+```
+
+## Data Visualizations
+What do we see?
+```{julia}
+#| label: plotting-conveniences
+#| output: false
+
+monthly_ticks =(
+		DateTime(Date(data.DateTime[findfirst(d -> dayofweek(d)==Sun, data.DateTime)]), Time(12)):Week(1):last(data.DateTime),
+		
+		Dates.format.(
+			DateTime(Date(data.DateTime[findfirst(d -> dayofweek(d)==Sun, data.DateTime)]), Time(12)):Week(1):last(data.DateTime),
+			"u-d"
+		)
+	)
+
+daily_xticks = (Time(0):Hour(3):Time(23), Dates.format.(Time(0):Hour(3):Time(23), "HH:MM"))
+
+cmap = Dict(
+		"DAP" => :darkgreen,
+		"SSP" => :orange,
+		"temp" => :darkred,
+		"Solar" => :gold,
+		"Wind" => :darkblue,
+		"CloudCover" => :darkgrey,
+		"Total Energy" => :hotpink,
+	)
+	
+clouds = cgrad([:gold, :darkgrey])
+winds = cgrad([:white, :blue])
+temp =cgrad(:turbo)
+```
+
+```{julia}
+#| fig-cap: "March 2024 Energy Prices"
+#| fig-alt: "Plot of day-ahead and single settlement prices"
+@df data plot(
+  layout=@layout((2, 1)),
+  xticks=monthly_ticks, legend=false,
+  ylims=(-50, 150),
+  plot(
+    title="DAP",
+    :DateTime, :DAP, lc=cmap["DAP"]),
+  plot(
+    title="SSP",
+    :DateTime, :SSP, lc=cmap["SSP"]),
+)
+```
+
+# Long Short-Term Memory Model
+What is an LSTM
+## Training
+How did we make one?
+## Performance
+Is it any good?
+
+# Conformalizing LSTM
+What are conforal predictions?
+Why are they good
+## How to?
+How did we conformalize the LSTM?
+
+## Performance
+Is it any good?
+
+# Conditional Value at Risk
+What is CVAR
+
+Why do we do it?
+
+## Implementation
+How did we do it?
+
+## Performance
+Was it any good?
+
+# Conclusions
+Was any of this worth while?
+
+What did we learn?
+
+What could others do?
