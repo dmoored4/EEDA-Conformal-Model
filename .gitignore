@@ -23,3 +23,7 @@ docs/site/
 # environment.
 Manifest.toml
 .DS_Store
+.quarto/_freeze/EnergyProdConformalLSTM/execute-results/tex.json
+.quarto/_freeze/EnergyProdConformalLSTM/figure-pdf/cell-7-output-1.svg
+.quarto/_freeze/EnergyProdConformalLSTM/figure-pdf/cell-9-output-1.svg
+.quarto/_freeze/EnergyProdConformalLSTM/figure-pdf/plotting-conveniences-output-1.svg
