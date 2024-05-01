@@ -52,6 +52,11 @@ Missing:
 Historical data is not available for these, but we know they are critical to predicting both the generation and demand. Further, we expect there is a complex dynamic with the prices. We have opted to include historical data to fill in this gap. Day-ahead weather forecasts are accurate enough that the difference is not expected to change the model parameters or performance drastically.
 """
 
+# ╔═╡ f854e900-3d94-4dc7-ba9d-a35edf4f08fe
+md"""
+Are these really all independent? If they are predicting prices will be low, or even negative, won't they feather the blades and unplug the PV?
+"""
+
 # ╔═╡ 44f9d85c-3218-4c54-8308-d873119ed64a
 md"""
 # 1. Loading Data
@@ -615,6 +620,19 @@ plot(
 
 )
 
+# ╔═╡ 85ad4af0-ee91-47e6-8fd8-ecc23029024d
+begin
+	@df data violin(
+			title="Wind Speed",
+			dayofweek.(:timestamp_utc), :windspeed, legend=false,
+			color=cmap["Wind"], α=0.5
+		)
+	@df data boxplot!(
+			dayofweek.(:timestamp_utc), :windspeed,
+			color=:black, α=0.25
+		)
+end
+
 # ╔═╡ 88622208-488a-419f-95d5-641f2a71d7e5
 plot(
 	layout=(3,1),
@@ -1073,56 +1091,6 @@ md"Forecast for Day: $(@bind forecast_day confirm(Slider(
 	maximum(Date.(data.timestamp_utc)), show_value=true, default=Date(2024,4,1)))
 )"
 
-# ╔═╡ 080d2217-217e-4366-8275-07036daf777b
-md"##### Multiple Day Predictions"
-
-# ╔═╡ b56b7c78-bbb4-4c3c-a49b-4069e809d99f
-md"##### Error Plots"
-
-# ╔═╡ be60977b-84f5-4355-92d5-291843dedf8b
-md"##### Residual Histogram"
-
-# ╔═╡ 3a3a0a71-ebb8-41e4-8d2f-c68c6daaf772
-function forecast(data, firstforecast, lastforecast)
-	firstforecast = findlast(row -> row ≤ firstforecast, data.timestamp_utc)
-	lastforecast = findlast(row -> row < lastforecast, data.timestamp_utc)
-	
-	xfrm = standardize_df(data, transforms)
-	
-	M = xfrm |> Matrix |> transpose
-
-	Flux.reset!(model)
-
-	for i in 1:size(M, firstforecast)-1
-		model(M[:, i])
-	end
-
-	results = [model(M[:, firstforecast])]
-	for j in firstforecast+1:lastforecast
-		new_result = model([M[1:5, j];last(results)])
-		push!(results, new_result)
-	end
-
-	out_df = DataFrame(hcat(results...) |> transpose, energy_cols)
-	out_df.timestamp_utc = data[firstforecast:lastforecast, :timestamp_utc]
-	select!(out_df, :timestamp_utc, :)
-	out_df = reconstruct_df(out_df, transforms)
-end
-
-# ╔═╡ 114b88c0-27d6-49a9-ba44-d4f78a5d5611
-begin
-	firstforecast = DateTime(forecast_day, Time(8, 30))
-	lastforecast = firstforecast + Hour(24)
-	results = forecast(data, firstforecast, lastforecast)
-end
-
-# ╔═╡ 4dd60134-242b-4857-aa69-56c55d0021f4
-xticks=range(
-	DateTime(Date(firstforecast),Time(8)),
-	DateTime(Date(firstforecast), Time(8))+Day(1),
-	step=Hour(4)
-)
-
 # ╔═╡ 3c23a6f7-78f3-4076-9e02-5a0b48c697cb
 begin
 	@df filter(
@@ -1169,31 +1137,8 @@ begin
 	)
 end
 
-# ╔═╡ f88ec603-6a91-4c2e-9ab1-9cb1aeb28ab4
-Revenue(Trade, DAP, Actual, SSP) = Trade*DAP + (Actual-Trade) * (SSP - 0.07*(Actual-Trade))
-
-# ╔═╡ fc1bdd7b-3f20-415f-aac2-e1d87c1038f0
-begin
-	predictions = []
-	for d in unique(data.timestamp_utc .|> Date)[2:end]
-		push!(predictions, forecast(
-				data,
-				DateTime(d, Time(8, 30)),
-				DateTime(d, Time(8, 30)) + Hour(24))
-		)
-	end
-	predictions = vcat(predictions...)
-	p_energy_cols = ["$(col)_pred" for col in energy_cols]
-	energy_pairs = energy_cols .=> p_energy_cols
-	rename!(predictions, energy_pairs)
-	leftjoin!(predictions, data, on=:timestamp_utc)
-	predictions.Revenue = Revenue.(
-		predictions.TotalEnergy_pred,
-		predictions.DAP,
-		predictions.TotalEnergy,
-		predictions.SSP)
-	predictions
-end		
+# ╔═╡ 080d2217-217e-4366-8275-07036daf777b
+md"##### Multiple Day Predictions"
 
 # ╔═╡ 3b627bcb-6b24-4caa-93d0-f0ec60d64f33
 @df last(predictions, 250) plot(
@@ -1204,17 +1149,27 @@ end
 		color=cmap["Total Energy"], label=["Y" "Ŷ"], line=[:solid :dash]
 		
 	),
-	plot(
-		title="Day Ahead Price",
-		:timestamp_utc, [:DAP :DAP_pred],
-		color=cmap["DAP"], label=["Y" "Ŷ"], line=[:solid :dash]
-	),
-	plot(
-		title="Imbalance Price",
-		:timestamp_utc, [:SSP :SSP_pred],
-		color=cmap["SSP"], label=["Y" "Ŷ"], line=[:solid :dash]
-	),
+	begin
+		plot(
+			title="Day Ahead Price",
+			:timestamp_utc, [:DAP :DAP_pred],
+			color=cmap["DAP"], label=["Y" "Ŷ"], line=[:solid :dash],
+		
+		)
+		hline!([0], color=:black, label=false, α=0.3)
+	end,
+	begin
+		plot(
+			title="Imbalance Price",
+			:timestamp_utc, [:SSP :SSP_pred],
+			color=cmap["SSP"], label=["Y" "Ŷ"], line=[:solid :dash]
+		)
+		hline!([0], color=:black, label=false, α=0.3)	
+	end,
 )
+
+# ╔═╡ b56b7c78-bbb4-4c3c-a49b-4069e809d99f
+md"##### Error Plots"
 
 # ╔═╡ c6a5c0c3-b7c7-4987-864b-b69eb48b4f21
 @df last(predictions, 250) plot(
@@ -1243,15 +1198,19 @@ end
 )
 
 # ╔═╡ 7de3d275-eea4-487f-aa38-2462d440c05e
-@df predictions scatter(
-	title="Surplus/Defecit and Revenue",
-	ylabel="ΔTotal Energy {predicted, actual}",
-	:timestamp_utc, :TotalEnergy_pred - :TotalEnergy, label=false,
-	marker_z=:Revenue/1e3,
-	color=cgrad([:red, :yellow, :green], [0, .71, 1]),
-	ms=5, markerstrokewidth=0.0, mα=0.6,
-	cbartitle="Revenue (thousands \$)"
-)
+begin
+	@df predictions scatter(
+		title="Surplus/Defecit and Revenue",
+		ylabel="ΔTotal Energy {predicted, actual}",
+		:timestamp_utc, :TotalEnergy_pred - :TotalEnergy, label=false,
+		marker_z=:Revenue/1e3,
+		color=cgrad([:red, :yellow, :green], [0, .32, 1]),
+		ms=5, markerstrokewidth=0.0, mα=0.6,
+		cbartitle="Revenue (thousands \$)"
+	)
+
+	hline!([0], color=:black, label=false, α=0.5)
+end
 
 # ╔═╡ 6d0c90fc-b398-4a63-a129-e950ae84169c
 @df predictions plot(
@@ -1261,6 +1220,9 @@ end
 	color=cgrad([:white,:hotpink]), lw=5,
 	cbartitle="Total Energy Production"
 )
+
+# ╔═╡ be60977b-84f5-4355-92d5-291843dedf8b
+md"##### Residual Histogram"
 
 # ╔═╡ 7160f04d-d684-403f-8ede-9de2f5997f99
 @df predictions plot(
@@ -1297,13 +1259,80 @@ end
 		color=:darkgreen
 	)
 
-# ╔═╡ f4106179-42f4-4620-895c-cae10d81d8e6
-data[calib_index, :]
+# ╔═╡ 3a3a0a71-ebb8-41e4-8d2f-c68c6daaf772
+function forecast(data, firstforecast, lastforecast)
+	firstforecast = findlast(row -> row ≤ firstforecast, data.timestamp_utc)
+	lastforecast = findlast(row -> row < lastforecast, data.timestamp_utc)
+	
+	xfrm = standardize_df(data, transforms)
+	
+	M = xfrm |> Matrix |> transpose
+
+	Flux.reset!(model)
+
+	for i in 1:firstforecast-2
+		model(M[:, i])
+	end
+
+	results = [model(M[:, firstforecast-1])]
+	for j in firstforecast:lastforecast-1
+		new_result = model([M[1:5, j];last(results)])
+		push!(results, new_result)
+	end
+
+	out_df = DataFrame(hcat(results...) |> transpose, energy_cols)
+	out_df.timestamp_utc = data[firstforecast:lastforecast, :timestamp_utc]
+	select!(out_df, :timestamp_utc, :)
+	out_df = reconstruct_df(out_df, transforms)
+end
+
+# ╔═╡ 114b88c0-27d6-49a9-ba44-d4f78a5d5611
+begin
+	firstforecast = DateTime(forecast_day, Time(8, 30))
+	lastforecast = firstforecast + Hour(24)
+	results = forecast(data, firstforecast, lastforecast)
+end
+
+# ╔═╡ 4dd60134-242b-4857-aa69-56c55d0021f4
+xticks=range(
+	DateTime(Date(firstforecast),Time(8)),
+	DateTime(Date(firstforecast), Time(8))+Day(1),
+	step=Hour(4)
+)
+
+# ╔═╡ f88ec603-6a91-4c2e-9ab1-9cb1aeb28ab4
+Revenue(Trade, DAP, Actual, SSP) = Trade*DAP + (Actual-Trade) * (SSP - 0.07*(Actual-Trade))
+
+# ╔═╡ fc1bdd7b-3f20-415f-aac2-e1d87c1038f0
+begin
+	predictions = []
+	for d in unique(data.timestamp_utc .|> Date)[2:end]
+		push!(predictions, forecast(
+				data,
+				DateTime(d, Time(8, 30)),
+				DateTime(d, Time(8, 30)) + Hour(24))
+		)
+	end
+	predictions = vcat(predictions...)
+	p_energy_cols = ["$(col)_pred" for col in energy_cols]
+	energy_pairs = energy_cols .=> p_energy_cols
+	rename!(predictions, energy_pairs)
+	leftjoin!(predictions, data, on=:timestamp_utc)
+	predictions.Revenue = Revenue.(
+		predictions.TotalEnergy_pred,
+		predictions.DAP,
+		predictions.TotalEnergy,
+		predictions.SSP)
+	predictions
+end		
 
 # ╔═╡ 7707022c-7067-4611-b708-79814fab4564
 md"""
 # 5. Conformalizing the LSTM Model
 """
+
+# ╔═╡ f4106179-42f4-4620-895c-cae10d81d8e6
+predictions[calib_index, Not(:Revenue)]
 
 # ╔═╡ d45fe2a2-ca99-4af4-b2cd-86c0824a7cd8
 md"""
@@ -1320,27 +1349,6 @@ begin
 	X = [x.past for x in Train]
 	y = [y.next for y in Train]
 end
-
-# ╔═╡ d75c78d4-f545-4b52-a1d7-5c2ff570b172
-builder = MLJFlux.@builder Chain(
-	LSTM_in = LSTM(input_dims => hidden_dim),
-	LSTM_hidden = LSTM(hidden_dim => hidden_dim),
-	Dense_hidden1 = Dense(hidden_dim => hidden_dim),
-	Dense_out = Dense(hidden_dim => output_dim, σ),
-)
-
-# ╔═╡ a805e6a0-58e0-4c06-8a3b-f9ffaf76bf0b
-reg = MultitargetNeuralNetworkRegressor(
-    builder=builder,
-    epochs=2^5,
-    loss=Flux.mse
-)
-
-# ╔═╡ 7741430f-d27a-4adf-988c-5805bd69baae
-mach = machine(reg, X, y)
-
-# ╔═╡ c01d54bb-c161-46ce-b64e-14a2a7c023d0
-models()
 
 # ╔═╡ ccee0fff-b4d7-4594-a2f5-b62318f51588
 md"""
@@ -3249,10 +3257,11 @@ version = "1.4.1+1"
 """
 
 # ╔═╡ Cell order:
-# ╠═d1856c6d-302c-4f13-9a3d-1c143fc0585d
+# ╟─d1856c6d-302c-4f13-9a3d-1c143fc0585d
 # ╠═1431c33d-00cd-40be-a548-c473cf2be82c
 # ╟─4694df35-d2d8-4d39-ba60-07a894357d09
 # ╟─7773febb-95f8-4c44-8eda-98397a3b7ad0
+# ╟─f854e900-3d94-4dc7-ba9d-a35edf4f08fe
 # ╟─44f9d85c-3218-4c54-8308-d873119ed64a
 # ╟─caf44cc1-e597-43c9-9db9-a34afca02a50
 # ╟─b4381993-9840-4379-b124-428477ce474c
@@ -3288,6 +3297,7 @@ version = "1.4.1+1"
 # ╟─9aca9018-e6cc-48a6-adae-53d09cdb0339
 # ╟─1806279a-0f67-4658-b5c9-1eebc6ed7919
 # ╟─5f2308de-a8c6-4c36-9bb8-40da9f393bf7
+# ╟─85ad4af0-ee91-47e6-8fd8-ecc23029024d
 # ╟─88622208-488a-419f-95d5-641f2a71d7e5
 # ╟─35b76c76-9749-4070-ba4f-aafa10349250
 # ╟─6cf2abfd-0652-4b0b-8d64-5896c058dc49
@@ -3313,7 +3323,7 @@ version = "1.4.1+1"
 # ╟─f64e1a46-dd78-4e31-a5ea-b6b32fdaea81
 # ╟─5216be48-4981-4388-b288-ea2353a165bd
 # ╟─3bf6802f-e4a9-4c6d-b5ae-f9750bbe82c4
-# ╠═d8048221-286d-413b-bb83-c8be118094e4
+# ╟─d8048221-286d-413b-bb83-c8be118094e4
 # ╟─08769354-34f9-4f3e-8b2a-f43278f38269
 # ╟─c6d8f4ce-475e-4636-980f-faf07b3ebfd9
 # ╠═cf1455b6-05da-4053-ab07-902153dc0958
@@ -3325,7 +3335,7 @@ version = "1.4.1+1"
 # ╟─52210b74-2957-481f-8f36-7b9bdf68c630
 # ╟─7498d60f-8134-4b26-9579-1eea8b6667d9
 # ╠═720e6b90-3e85-4c90-9c54-e8ae469a9cba
-# ╟─cc545f2b-37b8-4f00-b551-8e41dfe0d532
+# ╠═cc545f2b-37b8-4f00-b551-8e41dfe0d532
 # ╟─311f71fe-8096-4062-8ded-cfee8dd989b2
 # ╟─e3d9321e-db98-4d28-8c9d-34aebf3fb6cb
 # ╟─92b957dc-5244-4766-99b1-7c0ea470bef3
@@ -3349,18 +3359,14 @@ version = "1.4.1+1"
 # ╟─8d1110e2-9940-4171-ade1-7eb3c83b9332
 # ╟─4dd60134-242b-4857-aa69-56c55d0021f4
 # ╟─114b88c0-27d6-49a9-ba44-d4f78a5d5611
-# ╟─fc1bdd7b-3f20-415f-aac2-e1d87c1038f0
-# ╠═3a3a0a71-ebb8-41e4-8d2f-c68c6daaf772
+# ╠═fc1bdd7b-3f20-415f-aac2-e1d87c1038f0
+# ╟─3a3a0a71-ebb8-41e4-8d2f-c68c6daaf772
 # ╟─f88ec603-6a91-4c2e-9ab1-9cb1aeb28ab4
-# ╠═f4106179-42f4-4620-895c-cae10d81d8e6
 # ╟─7707022c-7067-4611-b708-79814fab4564
+# ╠═f4106179-42f4-4620-895c-cae10d81d8e6
 # ╟─d45fe2a2-ca99-4af4-b2cd-86c0824a7cd8
 # ╟─bf15eb86-ab97-417f-b6c1-2da5915bce56
 # ╠═daed30c6-0d40-4d03-a33d-ff1f89ef9161
-# ╠═d75c78d4-f545-4b52-a1d7-5c2ff570b172
-# ╠═a805e6a0-58e0-4c06-8a3b-f9ffaf76bf0b
-# ╠═7741430f-d27a-4adf-988c-5805bd69baae
-# ╠═c01d54bb-c161-46ce-b64e-14a2a7c023d0
 # ╟─ccee0fff-b4d7-4594-a2f5-b62318f51588
 # ╟─c47ca169-b110-4691-bdcb-d2c0f13ea64d
 # ╟─ca473b94-f00f-4ca0-a298-d4e8373aca3b
