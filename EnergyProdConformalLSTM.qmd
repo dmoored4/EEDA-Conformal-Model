@@ -188,7 +188,7 @@ visibiilty = cgrad([:white, :darkblue])
 april_week_3 = DateTime(2024, 4, 14, 8, 30) .≤ data.DateTime .≤ DateTime(2024, 4, 21, 8, 00)
 ```
 
-The first thing to notice when looking at the DAP and SSP time-series plots below is the volatility of the prices. The DAP exhibits some seasonality but the trend and cycles are not as clear. The SSP is more volatile as it traverses from the daily minimum to the daily maximum several times in a given day. This highlights how difficult it is for all participants to make accurate forecasts and fulfill their commitments.
+The first thing to notice when looking at the DAP and SSP time-series plots below is the volatility of the prices. The DAP exhibits some seasonality but the trend and cycles are not entirely obvious. The SSP is more volatile as it traverses from the daily minimum to the daily maximum several times in a given day. This highlights how difficult it is for all participants to make accurate forecasts and fulfill their commitments. The plots of the third week of April provide a closer look at the characteristics of these prices. While predicting the DAP appears feasible, the SSP is hardly distinguishable from noise.
 
 ```{julia}
 #| label: monthly-energy-price-plot
@@ -233,9 +233,11 @@ The first thing to notice when looking at the DAP and SSP time-series plots belo
         )
 
         hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
-    end,
+    end
 )
 ```
+
+Figure @ref shows the energy generation over March 2024 while Table shows the first week of April 2024. We see solar energy production is, as expected, seasonal while wind energy production is very cyclical. It appears to go from nothing to its full capacity in a short amount of time and stay there for a random amount of time before dropping, usually back to nothing.
 
 ```{julia}
 #| label: monthly-energy-production-plot
@@ -246,212 +248,96 @@ The first thing to notice when looking at the DAP and SSP time-series plots belo
     guidefontsize=8,
     xtickfontsize=5,
     legend=false,
-    ylims=1.1 .* extrema(:SSP),
     plot(
         title="March & April 2024",
         ylabel="Solar",
         xticks=monthly_ticks,
-        :DateTime, :DAP, color=cmap["DAP"]
+        :DateTime, :Solar, color=cmap["Solar"]
     ),
     plot(
         title="Week 3, April 2024",
-        :DateTime[april_week_3], :DAP[april_week_3], color=cmap["DAP"]
+        :DateTime[april_week_3], :Solar[april_week_3], color=cmap["Solar"]
     ),
     plot(
-            ylabel="SSP",
+            ylabel="Wind",
             xticks=monthly_ticks,
-            :DateTime, :SSP, color=cmap["SSP"]
+            :DateTime, :Wind, color=cmap["Wind"]
     ),
     plot(
-        :DateTime[april_week_3], :SSP[april_week_3], color=cmap["SSP"]
+        :DateTime[april_week_3], :Wind[april_week_3], color=cmap["Wind"]
     )
 )
 ```
 
-The plots of the DAP and SSP for the third week of April below provide a closer look at the characteristics of these prices. While predicting the DAP appears feasible, the SSP is hardly distinguishable from noise.
-
-Table @ref shows the energy generation over March 2024 while Table shows the first week of April 2024. We see solar energy production is, as expected, seasonal while wind energy production is very cyclical. It appears to go from nothing to its full capacity in a short amount of time and stay there for a random amount of time before dropping, usually back to nothing.
-
-```{julia}
-#| label: monthly-energy-production-plot-other
-#| fig-cap: "March 2024 Energy Production"
-#| fig-alt: "Plot energy production prices for March 2024"
-@df data plot(
-    title="March 2024 Energy Production",
-    xticks=monthly_ticks,
-    :DateTime, [:Solar :Wind],
-    label=["Solar" "Wind"],
-    lc=[cmap["Solar"] cmap["Wind"]]
-)
-```
-
-```{julia}
-#| label: weekly-energy-production-plot
-#| fig-cap: "First Week of April 2024 Energy Prices"
-#| fig-alt: "Plot of day-ahead and single settlement prices for first week of April 2024"
-@df last(data, 2 * 24 * 7) plot(
-    title="First Week of April 2024 Energy Production",
-    :DateTime, [:Solar, :Wind],
-    label=["Solar" "Wind"],
-    lc=[cmap["Solar"] cmap["Wind"]]
-)
-```
-
-```{julia}
-#| label: dap-ssp-vs-temp-quad-plot
-#| fig-cap: "DAP, SSP vs Temperature"
-#| fig-alt: "Plot of day-ahead and single settlement prices vs temperature"
+```{julia
+#| label: price_vs_temperature
+#| fig-cap: "DAP and SSP vs Temperature"
+#| fig-alt: "Plot of DAP and SSP vs Temperature"
 
 @df data plot(
-    layout=@layout([a b{0.1w}]), plot(
-        cbar=false, xrotation=45,
-        begin
-            plot(
-                title="Monthly DAP",
-                ylabel="DAP",
-                xaxis=false, xticks=monthly_ticks,
-                :DateTime, :DAP, label=false,
-                line_z=:temp, color=:turbo, α=0.3, lw=3)
-            hline!([0], lw=0.5, α=0.5, label=false)
-        end,
-        begin
-            plot(
-                title="One Week DAP",
-                xaxis=false, xticks=daily_xticks,
-                Time.(:DateTime), :DAP, label=false,
-                group=yearmonthday.(:DateTime),
-                line_z=:temp, color=temp, α=0.3, lw=3)
-
-            hline!([0], lw=0.5, α=0.5, label=false)
-        end,
-        begin
-            plot(
-                title="Monthly SSP",
-                ylabel="SSP",
-                xticks=monthly_ticks,
-                :DateTime, :SSP, label=false,
-                line_z=:temp, color=:turbo, α=0.3, lw=3)
-
-            hline!([0], lw=0.5, α=0.5, label=false)
-        end,
-        begin
-            plot(
-                title="One Week SSP",
-                xticks=daily_xticks,
-                Time.(:DateTime), :SSP, label=false,
-                group=yearmonthday.(:DateTime),
-                line_z=:temp, color=temp, α=0.3, lw=3)
-            hline!([0], lw=0.5, α=0.5, label=false)
-        end
-    ),
-    plot(
-        xlims=(0, 0),
-        [-2, -2],
-        [extrema(:temp)[1], extrema(:temp)[2]], label=false,
-        line_z=[extrema(:temp)[1], extrema(:temp)[2]],
-        color=temp, cbartitle="°C", framestyle=:none)
-)
-```
-
-```{julia}
-#| label: solar-production-vs-cloud-cover-plot
-#| fig-cap: "Daily Solar Production vs Cloud Cover"
-#| fig-alt: "Plot of daily solar production vs cloud cover"
-@df data plot(
-    layout=@layout([a b{0.1w}]),
-    plot(layout=(2, 1), cbar=false, plot(
-            ylabel="Solar Production", xticks=false,
-            Time.(:DateTime), :Solar, label=false,
-            group=yearmonthday.(:DateTime),
-            line_z=:cloudcover, color=clouds, α=0.5, lw=5,
-        ), scatter(
-            xlabel="Time of Day", ylabel="Solar Production", xticks=daily_xticks,
-            Time.(:DateTime), :Solar, label=false,
-            group=yearmonthday.(:DateTime),
-            mz=:cloudcover, color=clouds, α=0.3, ms=10, markerstrokewidth=0.0,
-        )
-    ), plot(
-        xlims=(0, 0),
-        [-2, -2],
-        [extrema(:cloudcover)[1], extrema(:cloudcover)[2]], label=false,
-        line_z=[extrema(:cloudcover)[1], extrema(:cloudcover)[2]],
-        color=clouds, cbartitle="Cloud Cover (%)", framestyle=:none)
-)
-```
-
-```{julia}
-#| label: solar-production-vs-temp-plot
-#| fig-cap: "Daily Solar Production vs Temperature"
-#| fig-alt: "Plot of daily solar production vs temperature"
-@df data plot(
-    layout=@layout([a b{0.1w}]),
-    plot(layout=(2, 1), cbar=false, plot(
-            ylabel="Solar Production", xticks=false,
-            Time.(:DateTime), :Solar, label=false,
-            group=yearmonthday.(:DateTime),
-            line_z=:temp, color=temp, α=0.5, lw=5,
-        ), scatter(
-            xlabel="Time of Day", ylabel="Solar Production", xticks=daily_xticks,
-            Time.(:DateTime), :Solar, label=false,
-            group=yearmonthday.(:DateTime),
-            mz=:temp, color=temp, α=0.3, ms=10, markerstrokewidth=0.0,
-        )
-    ), plot(
-        xlims=(0, 0),
-        [-2, -2],
-        [extrema(:temp)[1], extrema(:temp)[2]], label=false,
-        line_z=[extrema(:temp)[1], extrema(:temp)[2]],
-        color=temp, cbartitle="° C)", framestyle=:none)
-)
-```
-
-```{julia}
-@df data plot(
-    layout=@layout([a b{0.1w}]),
-    plot(
-        layout=(2, 1), cbar=false,
+    titlefontsize=8,
+    guidefontsize=8,
+    xtickfontsize=5,
+    legend=false,
+    ylims=1.1 .* extrema(:SSP),
+    begin
         plot(
-            ylabel="Wind Production", xticks=false,
-            Time.(:DateTime), :Wind, label=false,
-            group=yearmonthday.(:DateTime), lz=:windspeed, color=winds, lw=4, α=0.5), scatter(
-            xlabel="Time of Day", ylabel="Wind Production",
+            title="March & April 2024",
+            ylabel="DAP",
             xticks=daily_xticks,
-            Time.(:DateTime), :Wind, label=false,
-            group=yearmonthday.(:DateTime), mz=:windspeed, color=winds, ms=10, markerstrokewidth=0.3, α=0.5)
-    ), plot(
-        xlims=(0, 0),
-        [-2, -2],
-        [extrema(:windspeed)[1], extrema(:windspeed)[2]], label=false,
-        line_z=[extrema(:windspeed)[1], extrema(:windspeed)[2]],
-        color=winds, cbartitle="Wind Speed (kph)", framestyle=:none)
-)
-```
+            Time.(:DateTime), :DAP,
+            group=Date.(:DateTime), line_z=:temp,
+            color=temp
+        )
 
-```{julia}
-@df data plot(
-    layout=@layout([a b{0.1w}]),
-    plot(
-        layout=(2, 1), cbar=false,
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+    begin
         plot(
-            ylabel="Wind Production", xticks=false,
-            Time.(:DateTime), :Wind, label=false,
-            group=yearmonthday.(:DateTime), lz=:temp, color=temp, lw=4, α=0.5), scatter(
-            xlabel="Time of Day", ylabel="Wind Production",
-            xticks=daily_xticks,
-            Time.(:DateTime), :Wind, label=false,
-            group=yearmonthday.(:DateTime), mz=:temp, color=temp, ms=10, markerstrokewidth=0.3, α=0.5)
-    ), plot(
-        xlims=(0, 0),
-        [-2, -2],
-        [extrema(:temp)[1], extrema(:temp)[2]], label=false,
-        line_z=[extrema(:temp)[1], extrema(:temp)[2]],
-        color=temp, cbartitle="° C", framestyle=:none)
+            title="Week 3, April 2024",
+            :DateTime[april_week_3], :DAP[april_week_3], color=cmap["DAP"]
+        )
+
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+    begin
+        plot(
+            ylabel="SSP",
+            xticks=monthly_ticks,
+            :DateTime, :SSP, color=cmap["SSP"]
+        )
+
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+    begin
+        plot(
+            :DateTime[april_week_3], :SSP[april_week_3], color=cmap["SSP"]
+        )
+
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+        begin
+        plot(
+            ylabel="SSP",
+            xticks=monthly_ticks,
+            :DateTime, :SSP, color=cmap["SSP"]
+        )
+
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+    begin
+        plot(
+            :DateTime[april_week_3], :SSP[april_week_3], color=cmap["SSP"]
+        )
+
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end
 )
 ```
 
 # Long Short-Term Memory Model
 
-We used an LSTM Recurrent Neural Network (RNN) to predict the energy production and market prices for the following day. RNNs are designed to handle time-series data and LSTMs are a special type of RNN that can learn long-term dependencies in the data. Combined with a dense neural network, this model can remember (and forget) time-dependent relationships and approximate the complex dynamics among the variables.
+We used an LSTM Recurrent Neural Network (RNN) to predict the energy production and market prices for the following day. RNNs are designed to handle time-series data and LSTMs are a special type of RNN that can learn long-term dependencies in the data. Combined with a dense neural network, this model can remember (and forget) time-dependent relationships and approximate the complex dynamics among the variables. 
 
 ```{julia}
 #| label: data-transforms
@@ -477,7 +363,8 @@ end
 
 function reconstruct_data!(data;
     weather_cols = [], energy_cols = energy_cols)
-    data_xfrm = transform(select(data, [weather_cols..., energy_cols...]),
+    data_xfrm = transform(
+        select(data, [weather_cols..., energy_cols...]),
         renamecols=false,
         [col => x -> StatsBase.reconstruct!(transforms[col], x) for col in vcat(weather_cols, energy_cols)]
     )
@@ -488,13 +375,26 @@ end
 function batchsequences(data; batch_size = 2^5)
     M = Matrix(data)' .|> Float32
 
+    # first turn into a vector of n x batches
+    # n is number of features
     batches = [M[:, i:i+batch_size-1] for i in 1:size(M, 2)-batch_size+1]
+    
+    #=
+    now we need to offset everything a couple different ways. we need to have the inputs for predicting the energy at time, t be:
+    - the time and weather at time t
+    - the energy at time t-1
 
+    Then we need the target to be the energy at time t
+    =# 
+    next_time_weather = [b[1:1+length(weather_cols), :] for b in batches[2:end]]
+    
+    this_energy = [b[end-length(energy_cols)+1:end, :] for b in batches[1:end-1]]
+    
+    past = [[w; e] for (w, e) in zip(next_time_weather, this_energy)]
 
-    batches = [
-        (past=batches[i], next=batches[i+1][end-length(energy_cols)+1:end, :])
-        for i in 1:length(batches)-1
-        ]
+    next_energy = this_energy[2:end]
+
+    batches = [(past=p, next=n) for (p, n) in zip(past, next_energy)]
 
     return batches
 end
@@ -503,8 +403,8 @@ end
 ```{julia}
 #| label: data-split
 #| output: false
-train_ratio = 0.6
-calib_ratio = 0.2
+train_ratio = 0.45
+calib_ratio = 0.35
 
 train_idx = 1:floor(Int, train_ratio * nrow(data))
 calib_idx = (last(train_idx) + 1):floor(Int, (train_ratio + calib_ratio) * nrow(data))
@@ -516,12 +416,7 @@ Test = batchsequences(transform_data(data[test_idx, :]))
 ```
 
 ## Training
-
-We used Julia's deep learning library, Flux, to build and train the LSTM. We created a multi-target regressor to predict the energy production and market prices in single timestep increments. Target
-
--   Time: we transform time to be a ha
-
--   Weather Columns: Temperature
+We used Julia's deep learning library, Flux, to build and train the LSTM. We created a multi-target regressor to predict the energy production and market prices in single timestep increments. All features were normalized and time was encoded as a sine wave to capture the cyclical nature of time.
 
 ```{julia}
 #| label: set-loss
@@ -580,7 +475,7 @@ end
 #| echo: true
 
 # Number of epochs
-epochs = 2^3
+epochs = 2^7
 
 for epoch in 1:epochs
 
@@ -615,6 +510,45 @@ plot(
     markershape=[:o :^], markerstrokewidth=0,
     xscale=:log2, xticks= 2 .^ (0:8)
 )
+```
+
+
+```{julia}
+#| one-day-predictions
+#| results: false
+
+function predict_daterange(df, first_prediction, last_prediction)
+    first_pred_index = findfirst(
+        dt -> dt ≥ first_prediction, df.DateTime)
+    last_pred_index = findlast(
+        dt -> dt ≤ last_prediction, df.DateTime)
+
+    pred_dates = df[first_pred_index:last_pred_index, :DateTime]
+
+    df = transform_data(df)
+    batched = batchsequences(df, batch_size=1)
+
+    Flux.reset!(model)
+    for i in 1:first_pred_index-1
+        model(batched[i].past)
+    end
+
+    results = [model(batched[first_pred_index])]
+    #=
+    for j in first_pred_index+1:length(batched)-1
+        new_result = model([
+            batched[j].past[1:1+length(weather_cols);
+            last(results)])
+        push!(results, new_result)
+    end
+    =#
+
+    return results
+end
+```
+
+```{julia}
+predict_daterange(data, DateTime(2024,03,15,8,30), DateTime(2024,03,16,8,0))
 ```
 
 ## Performance
