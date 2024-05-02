@@ -422,6 +422,7 @@ We used Julia's deep learning library, Flux, to build and train the LSTM. We cre
 #| label: set-loss
 #| output: false
 #| echo: true
+#| eval: false
 loss(model, x, y) = Flux.mse(model(x), y)
 loss(model, data) = loss(model, data.past, data.next)
 ```
@@ -430,6 +431,7 @@ loss(model, data) = loss(model, data.past, data.next)
 #| label: build-LSTM
 #| echo: true
 #| code-fold: show
+#| eval: false
 input_dims = 1 + length(weather_cols) + length(energy_cols)
 out_dims = length(energy_cols)
 hidden_dim = 2^3
@@ -449,6 +451,7 @@ model
 #| label: setup-optimizer
 #| echo: true
 #| output: false
+#| eval: false
 η = 1e-4
 opt_state = Flux.setup(Adam(η), model)
 ```
@@ -456,6 +459,7 @@ opt_state = Flux.setup(Adam(η), model)
 ```{julia}
 #| label: train-function
 #| output: false
+#| eval: false
 function train!(loss, model, data, opt_state; loss_log=[])
     L, ∇ = Flux.withgradient(loss, model, data)
 
@@ -473,9 +477,10 @@ end
 #| label: training-loop
 #| output: false
 #| echo: true
+#| eval: false
 
 # Number of epochs
-epochs = 2^7
+epochs = 2^8
 
 for epoch in 1:epochs
 
@@ -502,6 +507,7 @@ end
 #| label: plot-loss
 #| fig-cap: "Training and Testing Loss"
 #| fig-alt: "Plot of training and testing loss"
+#| eval: false
 plot(
     title="Training and Testing Loss",
     xlabel="Epochs",
@@ -512,11 +518,9 @@ plot(
 )
 ```
 
-
 ```{julia}
-#| one-day-predictions
-#| results: false
-
+#| label: make_predictions
+#| output: false
 function predict_daterange(df, first_prediction, last_prediction)
     first_pred_index = findfirst(
         dt -> dt ≥ first_prediction, df.DateTime)
@@ -533,22 +537,53 @@ function predict_daterange(df, first_prediction, last_prediction)
         model(batched[i].past)
     end
 
-    results = [model(batched[first_pred_index])]
-    #=
-    for j in first_pred_index+1:length(batched)-1
-        new_result = model([
-            batched[j].past[1:1+length(weather_cols);
-            last(results)])
+    results = [model(batched[first_pred_index].past)]
+    # iterate over the rest of the data
+    # use the time and weather columns for batch[j][time+weather, ] and the last of predictions
+    for j in first_pred_index+1:last_pred_index
+        new_result = model([batched[j].past[1:1+length(weather_cols), :]; results[end]])
         push!(results, new_result)
     end
-    =#
+
+    results = hcat(results...)'
+
+    results = DataFrame(results, energy_cols) |> reconstruct_data!
+
+    results.DateTime = pred_dates
+    
+    return results
+end
+
+function predict_all(data)
+    days = unique(Date.(data.DateTime))
+    results = []
+    for d in days[1:end-1]
+        first_prediction = DateTime(d, Time(8, 30))
+        last_prediction = first_prediction + Day(1)
+        push!(results, predict_daterange(data, first_prediction, last_prediction))
+    end
+
+    results = vcat(results...)
+
+    select!(results, [:DateTime; energy_cols])
+
+    # rename all energy_cols to have "_pred" appended
+    for col in energy_cols
+        rename!(results, col => Symbol(string(col, "_pred")))
+    end
 
     return results
 end
 ```
 
 ```{julia}
-predict_daterange(data, DateTime(2024,03,15,8,30), DateTime(2024,03,16,8,0))
+#| label: one-day-predictions
+#| eval: false
+all_predictions = predict_all(data)
+
+all_predictions = leftjoin(all_predictions, data, on=:DateTime)
+
+CSV.write("src/data/predictions.csv", all_predictions)
 ```
 
 ## Performance
