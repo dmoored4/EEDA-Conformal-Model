@@ -269,7 +269,7 @@ Figure @ref shows the energy generation over March 2024 while Table shows the fi
 )
 ```
 
-```{julia
+```{julia}
 #| label: price_vs_temperature
 #| fig-cap: "DAP and SSP vs Temperature"
 #| fig-alt: "Plot of DAP and SSP vs Temperature"
@@ -337,7 +337,7 @@ Figure @ref shows the energy generation over March 2024 while Table shows the fi
 
 # Long Short-Term Memory Model
 
-We used an LSTM Recurrent Neural Network (RNN) to predict the energy production and market prices for the following day. RNNs are designed to handle time-series data and LSTMs are a special type of RNN that can learn long-term dependencies in the data. Combined with a dense neural network, this model can remember (and forget) time-dependent relationships and approximate the complex dynamics among the variables. 
+We used an LSTM Recurrent Neural Network (RNN) to predict the energy production and market prices for the following day. RNNs are designed to handle time-series data and LSTMs are a special type of RNN that can learn long-term dependencies in the data. Combined with a dense neural network, this model can remember (and forget) time-dependent relationships and approximate the complex dynamics among the variables.
 
 ```{julia}
 #| label: data-transforms
@@ -416,6 +416,7 @@ Test = batchsequences(transform_data(data[test_idx, :]))
 ```
 
 ## Training
+
 We used Julia's deep learning library, Flux, to build and train the LSTM. We created a multi-target regressor to predict the energy production and market prices in single timestep increments. All features were normalized and time was encoded as a sine wave to capture the cyclical nature of time.
 
 ```{julia}
