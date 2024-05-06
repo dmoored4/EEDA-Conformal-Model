@@ -19,17 +19,6 @@ author:
       - name: Rutgers University
         department: Industrial and Systems Engineering
 
-citation:
-    - type: article
-    title: A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification
-    author:
-    - name: Anastasios N. Angelopoulos
-    affiliation: Cornell University
-    - name: Stephen Bates
-    affiliation: Cornell University
-    issued: 2022
-    url: https://doi.org/10.48550/arxiv.2107.07511
-
 abstract: This paper explores optimizing the market trading of a renewable energy generation as an operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end workflow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. This is financially beneficial to the individual operator, but taken to a large scale this methodology increases the incentive for renewable generation participation which would drive cost and emissions down. This work used only eight features with favorable results, so it is expected that further studies and more advanced models with the same architecture would provide better yield.
 keywords: [Julia, Flux, LSTM, Conformal Prediction, conditional value at risk, renewable energy, energy markets, optimization, revenue, risk management]
 date: 2024-05-08
