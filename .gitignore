@@ -25,3 +25,5 @@ Manifest.toml
 .DS_Store
 .quarto/
 */libs/
+
+/.quarto/

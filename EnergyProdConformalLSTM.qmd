@@ -1,32 +1,33 @@
 ---
-title: "Conformalizing an LSTM to Optimize Revenue for a Renewable Energy Operator using Conditional Value at Risk"
-subtitle: Energy Markets and Data Analytics | Rutgers, Spring 2024 | Dr. Robert Mieth
-author: "Daniel Moore, Laila Saleh"
-date: "May 8, 2024"
-abstract: "We optimized the market trading of a renewable energy generation operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end workflow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. This is financially beneficial to the individual operator, but taken to a large scale this methodology increases the incentive for renewable generation participation which should drive cost and emissions down. This work used only eight features with favorable results, so it is expected that further studies and more advanced models with the same architecture would provide better yield."
+title: Optimizing Energy Market Trading with Conformal Predictions and Conditional Value at Risk
 
 format:
-  html:
-    toc: true
-    number-depth: 2
-    number-sections: true
-    start_page_number: 3
-    
-    lot: true
-    tbl-cap-location: top
+    ieee-pdf:
+        keep-tex: true
+    # ieee-html: default
 
-    lof: true
-    fig-align: center
-    fig-cap-location: bottom
+author:
+  - id: dmoored4
+    name: Daniel Moore
+    affiliations:
+      - name: Rutgers University
+        department: Industrial and Systems Engineering
+
+  - id: lailaa-salehh
+    name: Laila Saleh
+    affiliations:
+      - name: Rutgers University
+        department: Industrial and Systems Engineering
+
+abstract: We optimized the market trading of a renewable energy generation operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end workflow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. This is financially beneficial to the individual operator, but taken to a large scale this methodology increases the incentive for renewable generation participation which should drive cost and emissions down. This work used only eight features with favorable results, so it is expected that further studies and more advanced models with the same architecture would provide better yield.
+keywords: [Julia, Flux, LSTM, Conformal Prediction, conditional value at risk, renewable energy, energy markets, optimization, revenue, risk management]
+date: 2024-05-08
     
 execute: 
   echo: FALSE
 
 engine: julia
 ---
-
-\newpage
-
 ```{julia}
 #| label: loading-packages
 #| output: false
@@ -35,16 +36,14 @@ using CSV, DataFrames, StatsPlots, StatsBase
 using Flux
 
 gr(
-    # setting default font
     fontfamily=:Times,
-    # outputting as Scalar Vector Graphic (SVG) for nice plots to go to the PDF.
     fmt=:svg
 )
 ```
 
 # Introduction
 
-The [IEEE Hybrid Energy Forecasting and Trading Competition](https://ieee-dataport.org/competitions/hybrid-energy-forecasting-and-trading-competition) challenges participants to make day-ahead, half-hourly probabilistic forecasts of solar and wind energy production for a solar farm and Hornsea-1 Wind Farm in the east of England with a combined 3.6 GW capacity. The second task is to decide how much energy to commit to selling at the day-ahead price (DAP) to optimize revenues. Any difference between the committed energy and actual energy is rewarded or punished according to the single settlement price (SSP). As discussed later in the data, beyond their volatility, the DAP and SSP can also be negative indicating a surplus of energy on the market. In rare events, underproduction could be rewarded due to a negative SSP. The implied task is to also forecast the market prices so that the operator can reduce their risk exposure from both the energy production and market prices.
+The [IEEE Hybrid Energy Forecasting and Trading Competition](https://ieee-dataport.org/competitions/hybrid-energy-forecasting-and-trading-competition) challenges participants to make day-ahead, half-hourly probabilistic forecasts of solar and wind energy production for a solar farm and Hornsea-1 Wind Farm in the east of England with a combined 3.6 GW capacity and then maximize revenue through commitment in the day-ahead market. Any difference between the committed energy and actual energy is rewarded or punished according to the single settlement price (SSP). The implied task is to also forecast the market prices so that the operator can reduce their risk exposure from both the energy production and market prices.
 
 ## Motivation
 
@@ -62,9 +61,9 @@ What have other people done
 
 We have obtained datasets from two sources: the competition itself which provides the energy production data through the [Rebase API](https://www.rebase.energy/challenges/heftcom2024) and the [VisualCrossing API](https://www.visualcrossing.com/weather-api) which provides the weather data. The energy data details the solar and wind energy production and the DAP and SSP in half-hourly increments. The weather data is treated as historic for the period preceding a given forecast and as a weather forecast for the forecast horizon. If deployed, the model would need to operate only using forecasted weather data. This approach is acceptable for this study as 24-hour-ahead weather forecasts are typically very accurate and we are only incorporating basic weather features.
 
-## Data Summary
+## Data Inisghts
 
-The tables below provide a sample of what the data from each source look like for a few observation times and summary statistics.
+The tables below summarize the energy and weather data used throughout this report. We have the amount of energy produced from solar, wind, and combined total energy as well as the day-ahead and single settlement prices. Combining the solar and wind energy results in a more predictable value as we see the median total energy is greater than the sum of the median solar and wind energy and the mean value is closer to the median value. For the market prices we wee similar mean and median values in the DAP and SSP but the domain of the SSP is much larger. Also it is notable that both have negative values indicating there are times of a surplus of energy which is penalized by the market.
 
 ```{julia}
 #| label: loading-data
@@ -122,27 +121,16 @@ data = getdata()
 ```
 
 ```{julia}
-#| label: rebase-data
-#| tbl-cap: "Data from RebaseAPI"
-data[201:205, [:DateTime; energy_cols]]
-```
-
-```{julia}
 #| label: rebase-data-summary
-#| tbl-cap: "Energy Data Summary"
+#| tbl-cap: "Rebase Energy Data Summary"
 describe(data, :mean, :min, :median, :max, cols=energy_cols)
 ```
-
-```{julia}
-#| label: weather-data
-#| tbl-cap: "Data from VisualCrossing"
-data[201:205, [:DateTime; weather_cols]]
-```
-
+Examining the weather data, we see that verything but cloudcover is more or less normally distributed. Cloudcover, however, is heavily skewed towards being more cloudy as the mean is 71% and the median is 92%. Being England, this lives up to expectations.
 ```{julia}
 #| label: weather-data-summary
 #| tbl-cap: "Weather Data Summary"
-describe(data, :mean, :min, :median, :max, cols=[:DateTime; weather_cols])
+#| #| tbl.env: tabular
+describe(data, :mean, :min, :median, :max, cols=weather_cols)
 ```
 
 ## Data Visualizations
@@ -177,163 +165,333 @@ cmap = Dict(
     "Solar" => :darkgoldenrod1,
     "Wind" => :darkblue,
     "CloudCover" => :darkgrey,
-    "Total Energy" => :hotpink,
+    "TotalEnergy" => :hotpink,
 )
 
 clouds = cgrad([:gold, :darkgrey])
 winds = cgrad([:white, :blue])
 temp = cgrad(:turbo)
 visibiilty = cgrad([:white, :darkblue])
-
-april_week_3 = DateTime(2024, 4, 14, 8, 30) .≤ data.DateTime .≤ DateTime(2024, 4, 21, 8, 00)
+energy_prod = cgrad([:white, :hotpink])
 ```
 
-The first thing to notice when looking at the DAP and SSP time-series plots below is the volatility of the prices. The DAP exhibits some seasonality but the trend and cycles are not entirely obvious. The SSP is more volatile as it traverses from the daily minimum to the daily maximum several times in a given day. This highlights how difficult it is for all participants to make accurate forecasts and fulfill their commitments. The plots of the third week of April provide a closer look at the characteristics of these prices. While predicting the DAP appears feasible, the SSP is hardly distinguishable from noise.
+In the following plots we examine first the day-ahead and then the single settlement prices. The top plot shows the enitre history of the data, the second provides a closer look at a single week. The bottom plots show the prices vs. temperature and total energy production with the right side showing the daily seasonality. The relative variability of the SSP compared to the DAP is highighted by the scales being the same in the first and second plots.
+
+For the DAP, we see a clear pattern with a few random dips in the price but eventually returning to the mean. The week plot provides a clearer look at the typical pattern. In the temperature plot we see that the price tends to show the same general fluctuations regardless of the price. There are two days around April 9th which seem to have low costs associated with the warmest days. It is unclear whether this is a coincidence. The bottom plot shows how the price changes with total energy production. There is not a clear pattern in the monthly plot but we do see that prices are at a constant high, but not peak, price when energy production is the greatest. This is a direct consequence of solar production and not a causation.
 
 ```{julia}
-#| label: monthly-energy-price-plot
-#| fig-cap: "March & April 2024 Energy Prices"
-#| fig-alt: "Plot of day-ahead and single settlement prices for March & April 2024"
+#| label: monthly-dap-energy-price-plots
+#| fig-cap: "Day Ahead Prices"
+#| fig-alt: "Plots of day ahead prices"
 @df data plot(
-    titlefontsize=8,
-    guidefontsize=8,
-    xtickfontsize=5,
+    size=(800, 600),
+    layout = @layout([
+        month_plt
+        week_plt
+        month_temp{0.5w} daily_temp{0.5w} temp_cbar
+        month_wind{0.5w} daily_wind{0.5w} wind_cbar
+        ]),
     legend=false,
-    ylims=1.1 .* extrema(:SSP),
+    # monthly plot
     begin
         plot(
-            title="March & April 2024",
-            ylabel="DAP",
-            xticks=monthly_ticks,
-            :DateTime, :DAP, color=cmap["DAP"]
+            :DateTime, :DAP,
+            label="DAP", color=cmap["DAP"],
+            ylims=1.1 .* extrema(:SSP),
         )
-
         hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
     end,
+
+    # 1-week plot
     begin
         plot(
-            title="Week 3, April 2024",
-            :DateTime[april_week_3], :DAP[april_week_3], color=cmap["DAP"]
+            :DateTime, :DAP,
+            label="DAP", color=cmap["DAP"],
+            ylims=1.1 .* extrema(:SSP),
+            xlims=(DateTime(2024, 3, 10), DateTime(2024, 3, 17))
         )
-
         hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
     end,
+
+    # temperature plots
+    # monthly
     begin
         plot(
-            ylabel="SSP",
-            xticks=monthly_ticks,
-            :DateTime, :SSP, color=cmap["SSP"]
+            :DateTime, :DAP,
+            label="DAP",
+            line_z=:temp, color=temp, cbar=false,
         )
-
         hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
     end,
+    # daily
+    plot(
+        xticks = (Time.(Hour.(0:6:23)), [Dates.format(x, "HH:MM") for x in Time.(Hour.(0:6:23))]),
+        Time.(:DateTime), :DAP,
+        group=Date.(:DateTime),
+        line_z=:temp, color=temp, cbar=false
+    ),
+    plot(
+        xlims=(0,0),
+        [-2, -2],
+        [-2, -2],
+        line_z = [extrema(:temp)...], label=false,
+        color=temp, cbartitle="°C", framestyle=:none
+    ),
+
+    # wind plots
+    # monthly
     begin
         plot(
-            :DateTime[april_week_3], :SSP[april_week_3], color=cmap["SSP"]
+            :DateTime, :DAP,
+            label="DAP",
+            line_z=:TotalEnergy, color=energy_prod, cbar=false
         )
-
         hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
-    end
-)
-```
-
-Figure @ref shows the energy generation over March 2024 while Table shows the first week of April 2024. We see solar energy production is, as expected, seasonal while wind energy production is very cyclical. It appears to go from nothing to its full capacity in a short amount of time and stay there for a random amount of time before dropping, usually back to nothing.
-
-```{julia}
-#| label: monthly-energy-production-plot
-#| fig-cap: "March & April 2024 Energy Production"
-#| fig-alt: "Plot of wind solar and total energy production for March & April 2024"
-@df data plot(
-    titlefontsize=8,
-    guidefontsize=8,
-    xtickfontsize=5,
-    legend=false,
+    end,
+    # daily
     plot(
-        title="March & April 2024",
-        ylabel="Solar",
-        xticks=monthly_ticks,
-        :DateTime, :Solar, color=cmap["Solar"]
+     xticks = (Time.(Hour.(0:6:23)), [Dates.format(x, "HH:MM") for x in Time.(Hour.(0:6:23))]),
+        Time.(:DateTime), :DAP,
+        group=Date.(:DateTime),
+        line_z=:TotalEnergy, color=energy_prod, cbar=false
     ),
+    # cbar
     plot(
-        title="Week 3, April 2024",
-        :DateTime[april_week_3], :Solar[april_week_3], color=cmap["Solar"]
-    ),
-    plot(
-            ylabel="Wind",
-            xticks=monthly_ticks,
-            :DateTime, :Wind, color=cmap["Wind"]
-    ),
-    plot(
-        :DateTime[april_week_3], :Wind[april_week_3], color=cmap["Wind"]
+        xlims=(0,0),
+        [-2, -2],
+        [-2, -2],
+        line_z = [extrema(:TotalEnergy)...], label=false,
+        color=energy_prod, cbartitle="Energy Production", framestyle=:none
     )
 )
 ```
 
+The SSP is a different story as the time-series is hardly distinguishable from noise. We see the SSP fluctuates many times in a given day and there is no evident seasonality. There is also no clear pattern with temperature or total energy production. Finally, we note that the SSP covers a much larger domain than the DAP and frequently reaches near its extreme values.
+
 ```{julia}
-#| label: price_vs_temperature
-#| fig-cap: "DAP and SSP vs Temperature"
-#| fig-alt: "Plot of DAP and SSP vs Temperature"
+#| label: monthly-ssp-energy-price-plots
+#| fig-cap: "Single Settlement Prices"
+#| fig-alt: "Plots of day ahead prices"
+@df data plot(
+    size=(800, 600),
+    layout = @layout([
+        month_plt
+        week_plt
+        month_temp{0.5w} daily_temp{0.5w} temp_cbar
+        month_wind{0.5w} daily_wind{0.5w} wind_cbar
+        ]),
+    legend=false,
+    # monthly plot
+    begin
+        plot(
+            :DateTime, :SSP,
+            label="SSP", color=cmap["SSP"],
+            ylims=1.1 .* extrema(:SSP),
+        )
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+
+    # 1-week plot
+    begin
+        plot(
+            :DateTime, :SSP,
+            label="SSP", color=cmap["SSP"],
+            ylims=1.1 .* extrema(:SSP),
+            xlims=(DateTime(2024, 3, 10), DateTime(2024, 3, 17))
+        )
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+
+    # temperature plots
+    # monthly
+    begin
+        plot(
+            :DateTime, :SSP,
+            label="SSP",
+            line_z=:temp, color=temp, cbar=false,
+        )
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+    # daily
+    plot(
+        xticks = (Time.(Hour.(0:6:23)), [Dates.format(x, "HH:MM") for x in Time.(Hour.(0:6:23))]),
+        Time.(:DateTime), :SSP,
+        group=Date.(:DateTime),
+        line_z=:temp, color=temp, cbar=false
+    ),
+    plot(
+        xlims=(0,0),
+        [-2, -2],
+        [-2, -2],
+        line_z = [extrema(:temp)...], label=false,
+        color=temp, cbartitle="°C", framestyle=:none
+    ),
+
+    # wind plots
+    # monthly
+    begin
+        plot(
+            :DateTime, :SSP,
+            label="SSP",
+            line_z=:TotalEnergy, color=energy_prod, cbar=false
+        )
+        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+    end,
+    # daily
+    plot(
+     xticks = (Time.(Hour.(0:6:23)), [Dates.format(x, "HH:MM") for x in Time.(Hour.(0:6:23))]),
+        Time.(:DateTime), :SSP,
+        group=Date.(:DateTime),
+        line_z=:TotalEnergy, color=energy_prod, cbar=false
+    ),
+    # cbar
+    plot(
+        xlims=(0,0),
+        [-2, -2],
+        [-2, -2],
+        line_z = [extrema(:TotalEnergy)...], label=false,
+        color=energy_prod, cbartitle="Energy Production", framestyle=:none
+    )
+)
+```
+
+The violin plots with overlayed boxplots provide context for the trend and seasonality for the market prices and energy production. First, we can see there is no clear trend for any across the entire time frame. Instead, we see cycles which hint at a dynamic relationship between the prices and energy production. Note how in April we see a relatively constant energy production associated with the most drastic decrease in prices. The day of the week plots do hint at some trends, but nothing strong enough to warrant a one-hot encoding. We do not have enough data to determine whether it is a coincidence that Saturday has lower prices or if there is actually some relationship that makes this a predictable event. Finally, in the hourly plots we can finally observe a clear trend. The DAP follows a close distribution at each hour of the day and the change throughout the day is predicable. We can see a correlation with the SSP, but still the SSP is more variable and not directly correlated. Finally, we see that the total energy production follows a clear pattern, but with upper and lower quantiles reaching the extreme values indicating there are often enough times with very little or very high production. Combining the wind and solar has resulted in a more stable distribution.
+```{julia}
+#| label: violin-plots
+#| fig-cap: "Single Day, Weekly, and Daily Trends"
 
 @df data plot(
-    titlefontsize=8,
-    guidefontsize=8,
-    xtickfontsize=5,
-    legend=false,
-    ylims=1.1 .* extrema(:SSP),
+    layout=@layout([
+        m{0.5w} w{0.25w} d{0.25w}
+        m{0.5w} w{0.25w} d{0.25w}
+        m{0.5w} w{0.25w} d{0.25w}
+    ]),
+    ms=2,
+
     begin
-        plot(
-            title="March & April 2024",
+		@df data violin(
             ylabel="DAP",
-            xticks=daily_xticks,
-            Time.(:DateTime), :DAP,
-            group=Date.(:DateTime), line_z=:temp,
-            color=temp
-        )
+			Date.(:DateTime), :DAP, label=false,
+			color=cmap["DAP"], α=0.5,
+            xticks=false,
+		)
 
-        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+		@df data boxplot!(
+			Date.(:DateTime), :DAP, label=false,
+			color=:black, α=0.2
+		)
     end,
     begin
-        plot(
-            title="Week 3, April 2024",
-            :DateTime[april_week_3], :DAP[april_week_3], color=cmap["DAP"]
-        )
+		@df data violin(
+			dayofweek.(:DateTime), :DAP, label=false,
+			color=cmap["DAP"], α=0.5,
+            xticks=false, yticks=false,
+		)
 
-        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
-    end,
-    begin
-        plot(
-            ylabel="SSP",
-            xticks=monthly_ticks,
-            :DateTime, :SSP, color=cmap["SSP"]
-        )
-
-        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
-    end,
-    begin
-        plot(
-            :DateTime[april_week_3], :SSP[april_week_3], color=cmap["SSP"]
-        )
-
-        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+		@df data boxplot!(
+			dayofweek.(:DateTime), :DAP, label=false,
+			color=:black, α=0.2
+		)
     end,
         begin
-        plot(
-            ylabel="SSP",
-            xticks=monthly_ticks,
-            :DateTime, :SSP, color=cmap["SSP"]
-        )
+		@df data violin(
+			hour.(:DateTime), :DAP, label=false,
+			color=cmap["DAP"], α=0.5,
+            xticks=false, yticks=false,
+		)
 
-        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+		@df data boxplot!(
+			hour.(:DateTime), :DAP, label=false,
+			color=:black, α=0.2
+		)
+    end,
+
+    begin
+		@df data violin(
+            ylabel="SSP",
+			Date.(:DateTime), :SSP, label=false,
+			color=cmap["SSP"], α=0.5,
+            xticks=false
+		)
+
+		@df data boxplot!(
+			Date.(:DateTime), :SSP, label=false,
+			color=:black, α=0.2
+		)
     end,
     begin
-        plot(
-            :DateTime[april_week_3], :SSP[april_week_3], color=cmap["SSP"]
-        )
+		@df data violin(
+			dayofweek.(:DateTime), :SSP, label=false,
+			color=cmap["SSP"], α=0.5,
+            xticks=false, yticks=false,
+		)
 
-        hline!([0], lw=0.5, lc=:black, α=0.5, label=false)
+		@df data boxplot!(
+			dayofweek.(:DateTime), :SSP, label=false,
+			color=:black, α=0.2
+		)
+    end,
+        begin
+		@df data violin(
+			hour.(:DateTime), :SSP, label=false,
+			color=cmap["SSP"], α=0.5,
+            xticks=false, yticks=false,
+		)
+
+		@df data boxplot!(
+			hour.(:DateTime), :SSP, label=false,
+			color=:black, α=0.2
+		)
+    end,
+
+    begin
+		@df data violin(
+            xlabel="Date",
+            ylabel="Total Energy",
+			Date.(:DateTime), :TotalEnergy, label=false,
+			color=cmap["TotalEnergy"], α=0.5
+		)
+
+		@df data boxplot!(
+			Date.(:DateTime), :TotalEnergy, label=false,
+			color=:black, α=0.2
+		)
+    end,
+    begin
+		@df data violin(
+            xlabel="Day of Week",
+            xticks= (1:7, ["M" "T" "W" "Th" "F" "Sa" "Su"]),
+			dayofweek.(:DateTime), :TotalEnergy, label=false,
+			color=cmap["TotalEnergy"], α=0.5,
+            yticks=false,
+		)
+
+		@df data boxplot!(
+			dayofweek.(:DateTime), :TotalEnergy, label=false,
+			color=:black, α=0.2,
+            yticks=false,
+		)
+    end,
+        begin
+		@df data violin(
+            xlabel="Hour",
+            xticks=(0:6:23, [Dates.format(Time(h, 0), "HH:MM") for h in 0:6:23]),
+			hour.(:DateTime), :TotalEnergy, label=false,
+			color=cmap["TotalEnergy"], α=0.5,
+            yticks=false,
+		)
+
+		@df data boxplot!(
+			hour.(:DateTime), :TotalEnergy, label=false,
+			color=:black, α=0.2,
+            yticks=false,
+		)
     end
 )
 ```
+
+
+
 
 # Long Short-Term Memory Model
 
@@ -354,7 +512,7 @@ function transform_data(data;
     data_xfrm = transform(select(data, [dt_col, weather_cols..., energy_cols...]),
         renamecols=false,
         dt_col =>
-            dt -> -(1/2) * (1 .+ cos.((hour.(dt) + minute.(dt)/60) * 24/(2π))),
+            dt -> (1 .- cos.((hour.(dt) + minute.(dt)/60) * 2π/24))/2,
         [col => x -> StatsBase.transform(transforms[col], x) for col in vcat(weather_cols, energy_cols)]
     )
 
@@ -422,17 +580,13 @@ We used Julia's deep learning library, Flux, to build and train the LSTM. We cre
 ```{julia}
 #| label: set-loss
 #| output: false
-#| echo: true
-#| eval: false
 loss(model, x, y) = Flux.mse(model(x), y)
 loss(model, data) = loss(model, data.past, data.next)
 ```
 
 ```{julia}
 #| label: build-LSTM
-#| echo: true
-#| code-fold: show
-#| eval: false
+#| output: false
 input_dims = 1 + length(weather_cols) + length(energy_cols)
 out_dims = length(energy_cols)
 hidden_dim = 2^3
@@ -450,9 +604,7 @@ model
 
 ```{julia}
 #| label: setup-optimizer
-#| echo: true
 #| output: false
-#| eval: false
 η = 1e-4
 opt_state = Flux.setup(Adam(η), model)
 ```
@@ -460,7 +612,6 @@ opt_state = Flux.setup(Adam(η), model)
 ```{julia}
 #| label: train-function
 #| output: false
-#| eval: false
 function train!(loss, model, data, opt_state; loss_log=[])
     L, ∇ = Flux.withgradient(loss, model, data)
 
@@ -477,11 +628,9 @@ end
 ```{julia}
 #| label: training-loop
 #| output: false
-#| echo: true
-#| eval: false
 
 # Number of epochs
-epochs = 2^8
+epochs = 2^7
 
 for epoch in 1:epochs
 
@@ -510,7 +659,6 @@ end
 #| fig-alt: "Plot of training and testing loss"
 #| eval: false
 plot(
-    title="Training and Testing Loss",
     xlabel="Epochs",
     ylabel="Mean Squared Error",
     [train_loss_log test_loss_log], label=["Training Loss" "Testing Loss"],
@@ -523,21 +671,31 @@ plot(
 #| label: make_predictions
 #| output: false
 function predict_daterange(df, first_prediction, last_prediction)
+    # 
     first_pred_index = findfirst(
         dt -> dt ≥ first_prediction, df.DateTime)
     last_pred_index = findlast(
         dt -> dt ≤ last_prediction, df.DateTime)
 
+    # store predicted dates to join with predictions at the end
+    # this allows us to combine it back to the original data
     pred_dates = df[first_pred_index:last_pred_index, :DateTime]
 
+    # transform the data
     df = transform_data(df)
+    # batch the data. We now have a batch size of 1 because
+    # we are predicting the entire dataset in sequence
     batched = batchsequences(df, batch_size=1)
 
+    # reset the model internal state
     Flux.reset!(model)
+    # iterate over the data up to the first prediction
     for i in 1:first_pred_index-1
+        # run the model just to update the internal state
         model(batched[i].past)
     end
 
+    # store the first prediction
     results = [model(batched[first_pred_index].past)]
     # iterate over the rest of the data
     # use the time and weather columns for batch[j][time+weather, ] and the last of predictions
@@ -546,24 +704,31 @@ function predict_daterange(df, first_prediction, last_prediction)
         push!(results, new_result)
     end
 
+    # concatenate the results into a matrix
     results = hcat(results...)'
 
+    # reconstruct the data
     results = DataFrame(results, energy_cols) |> reconstruct_data!
 
+    # add the DateTime column
     results.DateTime = pred_dates
     
     return results
 end
 
+# predict the entire dataset
 function predict_all(data)
+    # get the unique days. We need to predict one day at a time starting at 8:30
     days = unique(Date.(data.DateTime))
     results = []
-    for d in days[1:end-1]
+    # 
+    for d in days[1:end-1] 
         first_prediction = DateTime(d, Time(8, 30))
         last_prediction = first_prediction + Day(1)
         push!(results, predict_daterange(data, first_prediction, last_prediction))
     end
 
+    # concatenate the results
     results = vcat(results...)
 
     select!(results, [:DateTime; energy_cols])
@@ -575,52 +740,540 @@ function predict_all(data)
 
     return results
 end
-```
 
-```{julia}
-#| label: one-day-predictions
-#| eval: false
+#| output: false
 all_predictions = predict_all(data)
 
+# join the predictions with the original data
 all_predictions = leftjoin(all_predictions, data, on=:DateTime)
 
+# write the predictions to a file
 CSV.write("src/data/predictions.csv", all_predictions)
 ```
 
-## Performance
+```{julia}
+#| label: load-predictions
+#| output: false
+# all_predictions = CSV.read("src/data/predictions.csv", DataFrame)
+```
 
-Is it any good?
+## Performance
+Qualitatively, we observe the LSTM predictions are sensible and follow the general characteristics of the target variables. It is able to predict the Total Energy very well, but the market prices are not as good.
+```{julia}
+#| label: plot-predictions
+#| fig-cap: "Predictions"
+#| fig-alt: "Plot of predictions"
+
+@df all_predictions plot(
+    xlims=(DateTime(2024, 4, 14, 8, 30), DateTime(2024, 4, 20, 8, 00)),
+    layout=@layout((5, 1)),
+    legend=false,
+    size=(800, 600),
+    plot(
+        ylabel="Solar",
+        :DateTime, [:Solar :Solar_pred],
+        color=[:grey cmap["Solar"]], lw=[4 2], α=[0.5 1]
+    ),
+    plot(
+        ylabel="Wind",
+        :DateTime, [:Wind :Wind_pred],
+        color=[:grey cmap["Wind"]], lw=[4 2], α=[0.5 1]
+    ),
+    plot(
+        ylabel="Total Energy",
+        :DateTime, [:TotalEnergy :TotalEnergy_pred],
+        color=[:grey cmap["TotalEnergy"]], lw=[4 2], α=[0.5 1]
+    ),
+    plot(
+        ylabel="DAP",
+        :DateTime, [:DAP :DAP_pred],
+        color=[:grey cmap["DAP"]], lw=[4 2], α=[0.5 1]
+    ),
+    plot(
+        ylabel="SSP",
+        :DateTime, [:SSP :SSP_pred],
+        color=[:grey cmap["SSP"]], lw=[4 2], α=[0.5 1]
+    )
+)
+```
+
+We check the Mean Absolute and Root Mean Squared Error for all three testing sets to ensure the model is not overfitting. The results are shown the table below.
+```{julia}
+#| label: test-error
+#| tbl-cap: "Mean Absolute Error"
+
+# make a dataframe to store just the MAE for each dataset
+# the rows should be the features and the columns should be the datasets
+
+MAE_df = DataFrame(
+    feature = energy_cols,
+    Train = [mean(abs.(all_predictions[train_idx, col] .- all_predictions[train_idx, string(col, "_pred")])) for col in energy_cols],
+    Calib = [mean(abs.(all_predictions[calib_idx, col] .- all_predictions[calib_idx, string(col, "_pred")])) for col in energy_cols],
+    Test = [mean(abs.(all_predictions[test_idx, col] .- all_predictions[test_idx, string(col, "_pred")])) for col in energy_cols]
+)
+```
+```{julia}
+#| label: test-error-squared
+#| tbl-cap: "Root Mean Square Error"
+RMSE_df = DataFrame(
+    feature = energy_cols,
+    Train = [sqrt(mean((all_predictions[train_idx, col] .- all_predictions[train_idx, string(col, "_pred")]).^2)) for col in energy_cols],
+    Calib = [sqrt(mean((all_predictions[calib_idx, col] .- all_predictions[calib_idx, string(col, "_pred")]).^2)) for col in energy_cols],
+    Test = [sqrt(mean((all_predictions[test_idx, col] .- all_predictions[test_idx, string(col, "_pred")]).^2)) for col in energy_cols]
+)
+```
+
+We see that the residuals are normally distributed with a mean of 0, indicating we will be able to conformalize the model to obtain a probabilistic forecast. Solar has most values at zero because the model correctly predicts no solar energy production at night. We get around this by using the combined energy as we don't explicitly have to know the solar and the wind energy production.
+
+```{julia}
+#| label: plot-residuals
+#| fig-cap: "Test Data Residuals"
+
+@df all_predictions[test_idx, :] plot(
+    layout=@layout((5, 1)),
+    size=(800, 600),
+    legend=false,
+    histogram(
+        ylabel="Solar",
+        all_predictions.Solar .- all_predictions.Solar_pred,
+        color=cmap["Solar"]
+    )
+    ,
+    histogram(
+        ylabel="Wind",
+        all_predictions.Wind .- all_predictions.Wind_pred,
+        color=cmap["Wind"]
+    ),
+    histogram(
+        ylabel="Total Energy",
+        all_predictions.TotalEnergy .- all_predictions.TotalEnergy_pred,
+        color=cmap["TotalEnergy"]
+    ),
+    histogram(
+        ylabel="DAP",
+        all_predictions.DAP .- all_predictions.DAP_pred,
+        color=cmap["DAP"]
+    ),
+    histogram(
+        ylabel="SSP",
+        all_predictions.SSP .- all_predictions.SSP_pred,
+        color=cmap["SSP"]
+    )
+)
+```
 
 # Conformalizing LSTM
-
-What are conformal predictions? Why are they good
-
-## How to?
-
-How did we conformalize the LSTM?
-
-## Performance
-
-Is it any good?
-
-# Conditional Value at Risk
-
-What is CVAR
-
-Why do we do it?
+The LSTM model has made predictions which capture the genaral behavior of the target variables in terms of the time-dependent dynamics. However, the model still has error that would make trading hazardous, especially because we do not have a sense of how confident the model is in its predictions.
 
 ## Implementation
+Conformal predictions are an elegant solution to quantifying the uncertainty of a point forecast model. It is emprically built from calibration data which the model has not seen. For this regression task, a simple residual nonconformity score is appropriate. We calculate the absolute error for each prediction in the calibration data and save it in a table for later reference. We can then retrieve the nonconformity score for any prediction and $\alpha$ level.
 
-How did we do it?
+```{julia}
+#| label: conformalizing-LSTM
+#| output: false
+
+# creattng a copy of the calibration data
+CP_data = deepcopy(all_predictions[calib_idx, :])
+
+# converting all excpet datetime to Float32
+CP_data[!, Not(:DateTime)] = Float32.(CP_data[!, Not(:DateTime)])
+
+# calculate the nonconformity scores as residuals
+for col in energy_cols
+    CP_data[!, Symbol(string(col, "_score"))] = abs.(CP_data[!, col] .-  CP_data[!, Symbol(string(col, "_pred"))])
+end
+
+# getting rid of everything except the scores
+select!(CP_data, [Symbol(string(col, "_score")) for col in energy_cols])
+
+# making convenience function to calculate the nonconformity scores
+# setting default CI to be .6 because the predictions are not very good
+# still, this will be very useful for the conditional value at risk optimization
+CP(col, α=0.75) = quantile(CP_data[!, Symbol(string(col, "_score"))], α)
+```
 
 ## Performance
 
-Was it any good?
+The nonconformity cumulative distribution functions are shown below. For both the energy productiona and market prices, the nonconfomrity scores grow exponentially once the quantile is past about 0.75. This indicates that $\alpha=0.75$ is a good choice for the confidence levels because more than that and the range becomes too high while less than results in too little coverage.
+
+```{julia}
+#| label: plot-nonconformity
+#| fig-cap: "Nonconformity Scores"
+#| fig-alt: "Plot of nonconformity scores"
+
+plot(
+    layout=@layout((2, 1)),
+    legend=:right,
+    plot(
+        begin
+            energy_CP_plt = plot(xlabel="Energy Production Nonconformity Score", ylabel="P(|y-ŷ| < NC)")
+            ecdfplot!(CP_data[!, :Solar_score],label="Solar", color=cmap["Solar"])
+            ecdfplot!(CP_data[!, :Wind_score],label="Wind", color=cmap["Wind"])
+            ecdfplot!(CP_data[!, :TotalEnergy_score],label="Total Energy", color=cmap["TotalEnergy"])
+        end
+    ),
+    plot(
+        begin
+            market_CP_plt = plot(xlabel="Market Price Nonconformity Score", ylabel="P(|y-ŷ| < NC)")
+            ecdfplot!(CP_data[!, :DAP_score],label="DAP", color=cmap["DAP"])
+            ecdfplot!(CP_data[!, :SSP_score],label="SSP", color=cmap["SSP"])
+        end
+    )
+)
+```
+
+The coverage of the values for the calibration and test data at 
+
+```{julia}
+#| label: coverage
+#| fig-cap: "Prediction Coverage"
+
+plot(
+    layout=@layout((3, 2)),
+    legend=false,
+    # Total Energy
+    begin
+        plot(
+            title="Calibration Data",
+            ylabel="Total Energy",
+            all_predictions[calib_idx, :DateTime],
+            all_predictions[calib_idx, :TotalEnergy],
+            color=:black, lw=3
+        )
+
+        plot!(
+            all_predictions[calib_idx, :DateTime],
+            all_predictions[calib_idx, :TotalEnergy_pred],
+            ribbon=CP(:TotalEnergy),
+            color=cmap["TotalEnergy"]
+        )
+    end,
+    begin
+        plot(
+            title="Test Data",
+            all_predictions[test_idx, :DateTime],
+            all_predictions[test_idx, :TotalEnergy],
+            color=:black, lw=3
+        )
+
+        plot!(
+            all_predictions[test_idx, :DateTime],
+            all_predictions[test_idx, :TotalEnergy_pred],
+            ribbon=CP(:TotalEnergy),
+            color=cmap["TotalEnergy"]
+        )
+    end,
+
+    # DAP
+    begin
+        plot(
+            ylabel="DAP",
+            all_predictions[calib_idx, :DateTime],
+            all_predictions[calib_idx, :DAP],
+            color=:black, lw=3
+        )
+
+        plot!(
+            all_predictions[calib_idx, :DateTime],
+            all_predictions[calib_idx, :DAP_pred],
+            ribbon=CP(:DAP),
+            color=cmap["DAP"]
+        )
+    end,
+    begin
+        plot(
+            all_predictions[test_idx, :DateTime],
+            all_predictions[test_idx, :DAP],
+            color=:black, lw=3
+        )
+
+        plot!(
+            all_predictions[test_idx, :DateTime],
+            all_predictions[test_idx, :DAP_pred],
+            ribbon=CP(:DAP),
+            color=cmap["DAP"]
+        )
+    end,
+
+    # SSP
+    begin
+        plot(
+            ylabel="SSP",
+            all_predictions[calib_idx, :DateTime],
+            all_predictions[calib_idx, :SSP],
+            color=:black, lw=3
+        )
+
+        plot!(
+            all_predictions[calib_idx, :DateTime],
+            all_predictions[calib_idx, :SSP_pred],
+            ribbon=CP(:SSP),
+            color=cmap["SSP"]
+        )
+    end,
+    begin
+        plot(
+            all_predictions[test_idx, :DateTime],
+            all_predictions[test_idx, :SSP],
+            color=:black, lw=3
+        )
+
+        plot!(
+            all_predictions[test_idx, :DateTime],
+            all_predictions[test_idx, :SSP_pred],
+            ribbon=CP(:SSP),
+            color=cmap["SSP"]
+        )
+    end
+
+)
+```
+
+Finally, we confirm the coverage of the predictions for the test data at $\alpha=0.75$ for the total energy and market prices for the training, calibration, and test data.
+
+```{julia}
+#| label: coverage-table
+#| tbl-cap: "Prediction Coverage"
+
+coverage_df = DataFrame(
+    feature = energy_cols,
+    Train = [mean(abs.(all_predictions[train_idx, col] .- all_predictions[train_idx, string(col, "_pred")]) .< CP(col)) for col in energy_cols],
+    Calib = [mean(abs.(all_predictions[calib_idx, col] .- all_predictions[calib_idx, string(col, "_pred")]) .< CP(col)) for col in energy_cols],
+    Test = [mean(abs.(all_predictions[test_idx, col] .- all_predictions[test_idx, string(col, "_pred")]) .< CP(col)) for col in energy_cols]
+)
+```
+
+We observe that the values are consistent for the training and calibration data while the prediction intervals do not hold for the test data where the coverage drops to as low as 0.62 for the DAP. Still, the coverage for the Total Energy is at 0.72 which is acceptable. The degradation of the coverage in the test data is likely due to increased volatility in the markets which the model has not seen before.
+
+# Market Trading
+With prediction for the energy production and market prices we can make informed decisions about how much energy to commit to the day ahead market. We will explore three strategies for comparison. It must be assumed that the operator does not have the ability to store energy or reduce energy production because we have not been provided that information. If the operator could, they would opt to shut down production if prices are expected to be negative. We cannot consider this outcome because the data does not provide information on the cost of shutting down production.
+
+1. Commit the point prediction of the total energy
+2. Commit the confomral prediction of the total energy at a given $\alpha$ level (as mentioned above we will use 0.75)
+3. Commit the confomral prediction considering the joint probabilties of the total energy and market prices
+
+Revenue is calculated for this competition according to this formula which  approximates the impact of the difference between the energy prediction and actual production on the settlement price.
+
+$Revenue = Trade*DAP + \Delta_E (SSP - 0.07 \Delta_E)$
+$\Delta_E = Actual - Trade$
+
+```{julia}
+#| label: revenue-formula
+#| output: false
+
+revenue(traded, actual, dap, ssp) = traded*dap + (actual-traded)*(ssp - 0.07*(actual-traded))
+```
+
+## Revenue from Point Prediction
+The predicted total energy is used as the traded amount in the day ahead market. Revenue is cacluated above using the actual total energy and the actual market prices.
+
+```{julia}
+#| label: point-prediction-revenue
+#| output: false
+
+all_predictions.perfect_energy_revenue = revenue.(all_predictions.TotalEnergy, all_predictions.TotalEnergy, all_predictions.DAP, all_predictions.SSP)
+
+all_predictions.point_revenue = revenue.(all_predictions.TotalEnergy_pred, all_predictions.TotalEnergy, all_predictions.DAP, all_predictions.SSP)
+```
+
+## Revenue from Conformal Prediction
+Here we determine the lower bound of the amount of energy to be produced by subtracting the nonconformity score of the 75th quantile from the point prediciton. We then trade the greater of this amount and zero as negative values are not allowed. Revenue is caclualted as before.
+
+```{julia}
+#| label: conformal-prediction-revenue
+#| output: false
+
+all_predictions.conformal_revenue = revenue.(
+    max.(0,
+    all_predictions.TotalEnergy_pred .- CP(:TotalEnergy)
+    ),
+    all_predictions.TotalEnergy,
+    all_predictions.DAP,
+    all_predictions.SSP
+)
+```
+
+
+## Revenue from Conditional Value at Risk
+The shortcoming of the above methods are primarily that they do not consider the market prices and the joint probability of the errors. We must use joint probabilities to do so as the nonconformity scores of the total energy, DAP, and SSP are correlated.
+
+We have two options for capturing the joint probabilities. First, we could assume these are multivariate normally distributed and we could sample them as such. While convenient, it introduces additional assumptions which may not be valid. Instead, we will sample the residuals from the calibration data. For each timestep, we modify the total energy and market predictions according to $n$ samples from the calibration data. For all values of the possible traded energy, we evaluate the revenue for all sceanrios and find the amount to trade which minimizes the expected shortfall. This process is depicted in the plot below.
+
+```{julia}
+#| label: cvar-plot-example
+#| fig-cap: "Conditional Value at Risk"
+
+# pick a random date in the afteroon in the test data
+dt_idx = findlast(
+    dt -> dt ≤ DateTime(2024, 4, 19, 17, 00),
+    all_predictions.DateTime)
+
+# establish the range of energy to trade
+TradeEnergyRange = DataFrame(
+    Trade = range(extrema(all_predictions.TotalEnergy_pred)..., length=200),
+)
+
+# number of scenarios to evaluate at each amount of energy to trade
+n = 250
+scenarios = rand(calib_idx, n)
+
+# calibration residuals to sample from:
+calib_residuals = DataFrame(
+    [all_predictions[scenarios, col] .- all_predictions[scenarios, string(col, "_pred")] for col in energy_cols],
+    energy_cols
+)
+
+# don't need these columns
+select!(calib_residuals, Not(:Solar, :Wind))
+
+TotalEnergyRange = crossjoin(TradeEnergyRange, calib_residuals)
+
+# adding residuals from each scenario to the point prediction
+TotalEnergyRange.TotalEnergy .+= all_predictions[dt_idx, :TotalEnergy_pred]
+# can't have negative energy
+TotalEnergyRange.TotalEnergy .= max.(0, TotalEnergyRange.TotalEnergy)
+TotalEnergyRange.DAP .+= all_predictions[dt_idx, :DAP_pred]
+TotalEnergyRange.SSP .+= all_predictions[dt_idx, :SSP_pred]
+
+# calculate the revenue for each scenario
+TotalEnergyRange.Revenue = revenue.(
+    TotalEnergyRange.Trade,
+    TotalEnergyRange.TotalEnergy,
+    TotalEnergyRange.DAP,
+    TotalEnergyRange.SSP
+)
+
+# Create a dataframe called Revenues which will have the following:
+# the Trade range
+# mean revenue for each trade amount
+# the median revenue for each trade amount
+# the 5th percentile revenue for each trade amount
+# the mean of the bottom 5% of the revenue for each trade amount
+Revenues = DataFrame(
+    Trade = unique(TotalEnergyRange.Trade),
+    Revenue_mean = [mean(TotalEnergyRange[TotalEnergyRange.Trade .== t, :Revenue]) for t in unique(TotalEnergyRange.Trade)],
+    Revenue_median = [median(TotalEnergyRange[TotalEnergyRange.Trade .== t, :Revenue]) for t in unique(TotalEnergyRange.Trade)],
+    Revenue_5th = [quantile(TotalEnergyRange[TotalEnergyRange.Trade .== t, :Revenue], 0.05) for t in unique(TotalEnergyRange.Trade)],
+    Revenue_bottom5 = [mean(sort(TotalEnergyRange[TotalEnergyRange.Trade .== t, :Revenue])[1:5]) for t in unique(TotalEnergyRange.Trade)]
+)
+
+# scatter plot of the revenue for each scenario
+@df TotalEnergyRange scatter(
+    :Trade, :Revenue,
+    markerstrokewidth=0, ms=2, α=0.25,
+    marker_z=:TotalEnergy, color=energy_prod,
+    label="Scenario Revenue",
+    ylims=(-2e5, :auto)
+)
+
+# plot the revenue for the different strategies
+@df Revenues plot!(
+    :Trade, [:Revenue_mean :Revenue_median :Revenue_5th :Revenue_bottom5],
+    label=["Mean" "Median" "5th Percentile" "Mean of Bottom 5%"],
+    lw=3, color=[:black :grey :red :green]
+)
+
+@df all_predictions[[dt_idx], :] scatter!(
+    :TotalEnergy, [:perfect_energy_revenue :point_revenue :conformal_revenue],
+    label=["Perfect" "Point" "Conformal"],
+    shape=[:star :+ :x], ms=5, mc=:black,
+    legend=:outertopleft
+)
+
+maximal_cvar = Revenues[findmax(Revenues.Revenue_bottom5)[2], :Trade]
+cvar_revenue = revenue(maximal_cvar, all_predictions[dt_idx, :TotalEnergy], all_predictions[dt_idx, :DAP], all_predictions[dt_idx, :SSP])
+
+scatter!(
+    [maximal_cvar], [cvar_revenue],
+    label="Conditional Value at Risk",
+    shape=:diamond, ms=10, mc=:green
+)
+```
+The plot shows the revenue for each scenario as a scatter point colored on the amount of energy expected to be produced. We have overlaid the mean, median, 5th percentile value at risk, and the 5th percentile conditional value at risk. Also as scatter points are the trade and revenue amounts for a perfect energy production prediction, the point forecast, and the conformal forecast. Finally, we see the large green diamond indicating the revenue actually recieved for this time step at the trade amount set by the conditional value at risk. We note how the aggregation for the mean and value at risk smooths the curves to they have a convex shape.
+
+```{julia}
+#| label: cvar-function
+#| output: false
+
+# set the conditional value at risk level
+# we want to maximize the expectation of the lowest 5% of the revenue
+α=0.05
+# extent of the trade amount to be considered
+trade_range = DataFrame(Trade=range(extrema(all_predictions[train_idx, :TotalEnergy])...; length=200))
+
+# how many residuals to sample
+n = 250
+
+all_predictions.cvar_trade .= NaN
+for row in eachrow(all_predictions)
+    calib_residuals = DataFrame(
+        [all_predictions[rand(calib_idx, n), col] .- all_predictions[rand(calib_idx, n), string(col, "_pred")] for col in energy_cols],
+        energy_cols
+    )
+
+    select!(calib_residuals, Not(:Solar, :Wind))
+
+    TotalEnergyRange = crossjoin(trade_range, calib_residuals)
+
+    TotalEnergyRange.TotalEnergy .+= row.TotalEnergy_pred
+    TotalEnergyRange.TotalEnergy .= max.(0, TotalEnergyRange.TotalEnergy)
+    TotalEnergyRange.DAP .+= row.DAP_pred
+    TotalEnergyRange.SSP .+= row.SSP_pred
+
+    TotalEnergyRange.Revenue = revenue.(
+        TotalEnergyRange.Trade,
+        TotalEnergyRange.TotalEnergy,
+        TotalEnergyRange.DAP,
+        TotalEnergyRange.SSP
+    )
+
+    Revenues = DataFrame(
+        Trade = unique(TotalEnergyRange.Trade),
+        Revenue_bottom5 = [mean(sort(TotalEnergyRange[TotalEnergyRange.Trade .== t, :Revenue])[1:round(Int, α*n)]) for t in unique(TotalEnergyRange.Trade)]
+    )
+
+    row.cvar_trade = Revenues[findmax(Revenues.Revenue_bottom5)[2], :Trade]
+end
+
+all_predictions.cvar_revenue = revenue.(all_predictions.cvar_trade, all_predictions.TotalEnergy, all_predictions.DAP, all_predictions.SSP)
+```
+
+## Performance
+Below we examine the revenues for each trading strategy. THe top plot shows that all strategies are typically making the ssame revnue but there is one moment where the predictions all suffer a catastrophic loss. The middle plot shows the cumulative revenue and we see over time they all recover but the dip is pronounced. Lastly at the bottom there is a plot which shows the relative cumulative value of each strategy compared to the perfect prediction. Eventually, they all recover and their values approach around 0.6 in the long run. Surprisingly the point forecast is the best followed by the CVaR and finally the conformal prediction. 
+```{julia}
+#| label: revenue-plots
+#| fig-cap: "Revnue vs. Time"
+
+@df all_predictions[test_idx, :] plot(
+    layout=@layout((3, 1)),
+
+    legend=:outertopright,
+    plot(
+        ylabel="Revenue",
+        :DateTime, [:perfect_energy_revenue :point_revenue :conformal_revenue :cvar_revenue],
+        color=[:black :blue :red :green],
+        label=["Perfect" "Point" "Conformal" "CVaR"]
+    ),
+    plot(
+        ylabel="Cumulative Revenue",
+        :DateTime, [cumsum(:perfect_energy_revenue) cumsum(:point_revenue) cumsum(:conformal_revenue) cumsum(:cvar_revenue)],
+        color=[:black :blue :red :green],
+        label=["Perfect" "Point" "Conformal" "CVaR"]
+    ),
+
+    plot(
+        ylabel="Relative to Perfect",
+        :DateTime, [cumsum(:perfect_energy_revenue) ./ cumsum(:perfect_energy_revenue) cumsum(:point_revenue) ./ cumsum(:perfect_energy_revenue) cumsum(:conformal_revenue) ./ cumsum(:perfect_energy_revenue) cumsum(:cvar_revenue) ./ cumsum(:perfect_energy_revenue)],
+        color=[:black :blue :red :green],
+        label=["Perfect" "Point" "Conformal" "CVaR"]
+    )
+)
+
+```
 
 # Conclusions
 
-Was any of this worth while?
-
-What did we learn?
-
-What could others do?
+Suggestions for future work
+1. Include more data, especially demand predictions
+2. Include the cost of shutting down production
+3. Predict a trade amount which will maximize the revenue with some $\alpha$ level directly
