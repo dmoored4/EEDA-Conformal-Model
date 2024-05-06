@@ -19,9 +19,22 @@ author:
       - name: Rutgers University
         department: Industrial and Systems Engineering
 
-abstract: We optimized the market trading of a renewable energy generation operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end workflow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. This is financially beneficial to the individual operator, but taken to a large scale this methodology increases the incentive for renewable generation participation which should drive cost and emissions down. This work used only eight features with favorable results, so it is expected that further studies and more advanced models with the same architecture would provide better yield.
+citation:
+    - type: article
+    title: A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification
+    author:
+    - name: Anastasios N. Angelopoulos
+    affiliation: Cornell University
+    - name: Stephen Bates
+    affiliation: Cornell University
+    issued: 2022
+    url: https://doi.org/10.48550/arxiv.2107.07511
+
+abstract: This paper explores optimizing the market trading of a renewable energy generation as an operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end workflow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. This is financially beneficial to the individual operator, but taken to a large scale this methodology increases the incentive for renewable generation participation which would drive cost and emissions down. This work used only eight features with favorable results, so it is expected that further studies and more advanced models with the same architecture would provide better yield.
 keywords: [Julia, Flux, LSTM, Conformal Prediction, conditional value at risk, renewable energy, energy markets, optimization, revenue, risk management]
 date: 2024-05-08
+
+
     
 execute: 
   echo: FALSE
@@ -59,7 +72,7 @@ What have other people done
 
 # Data Analysis
 
-We have obtained datasets from two sources: the competition itself which provides the energy production data through the [Rebase API](https://www.rebase.energy/challenges/heftcom2024) and the [VisualCrossing API](https://www.visualcrossing.com/weather-api) which provides the weather data. The energy data details the solar and wind energy production and the DAP and SSP in half-hourly increments. The weather data is treated as historic for the period preceding a given forecast and as a weather forecast for the forecast horizon. If deployed, the model would need to operate only using forecasted weather data. This approach is acceptable for this study as 24-hour-ahead weather forecasts are typically very accurate and we are only incorporating basic weather features.
+We have obtained datasets from two sources: the competition which provides the energy production data through the [Rebase API](https://www.rebase.energy/challenges/heftcom2024) and the [VisualCrossing API](https://www.visualcrossing.com/weather-api) which provides the weather data. The energy data details the solar and wind energy production and the DAP and SSP in half-hourly increments. The weather data is treated as historic for the period preceding a given forecast and as a weather forecast for the forecast horizon. If deployed, the model would need to operate only using forecasted weather data. This approach is acceptable for this study as 24-hour-ahead weather forecasts are typically very accurate and we are only incorporating basic weather features.
 
 ## Data Inisghts
 
@@ -131,6 +144,7 @@ Examining the weather data, we see that verything but cloudcover is more or less
 #| tbl-cap: "Weather Data Summary"
 #| #| tbl.env: tabular
 describe(data, :mean, :min, :median, :max, cols=weather_cols)
+#makes claim about normal distribution with no plot.
 ```
 
 ## Data Visualizations
@@ -266,7 +280,7 @@ For the DAP, we see a clear pattern with a few random dips in the price but even
 )
 ```
 
-The SSP is a different story as the time-series is hardly distinguishable from noise. We see the SSP fluctuates many times in a given day and there is no evident seasonality. There is also no clear pattern with temperature or total energy production. Finally, we note that the SSP covers a much larger domain than the DAP and frequently reaches near its extreme values.
+The SSP behaves differently as the time-series is hardly distinguishable from noise. We see the SSP fluctuates many times in a given day and there is no evident seasonality. There is also no clear pattern with temperature or total energy production. Finally, we note that the SSP covers a much larger domain than the DAP and frequently reaches near its extreme values.
 
 ```{julia}
 #| label: monthly-ssp-energy-price-plots
