@@ -771,6 +771,18 @@ CSV.write("src/data/predictions.csv", all_predictions)
 # all_predictions = CSV.read("src/data/predictions.csv", DataFrame)
 ```
 
+```{julia}
+#| label: TSLM Model
+#| output: false
+using Pkg
+#Pkg.add("GLM")
+using GLM
+using DataFrames
+
+# Fit the linear model
+model = lm(@formula(DAP ~ temp + windspeed + winddir), data)
+
+```
 ## Performance
 Qualitatively, we observe the LSTM predictions are sensible and follow the general characteristics of the target variables. It is able to predict the Total Energy very well, but the market prices are not as good.
 ```{julia}
