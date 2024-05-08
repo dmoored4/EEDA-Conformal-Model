@@ -66,7 +66,7 @@ We have obtained datasets from two sources: the competition itself which provide
 
 ## Data Insights
 
-The tables below provide summary statistics for the energy and weather data used throughout this report. We have the amount of power produced from solar, wind, and combined total power as well as DAP and SSP. The DAP is the Intermittent Market Reference Price published by the Low Carbon Contracts Company. It is the weighted average of the prices from Great Britain's two-day-ahead auctions, operated by NordPool and EPEX Spot. The SSP is calculated and distributed by Elexon and is the price paid for energy imbalances in the market. As our task is to make bids on the total energy rather than the solar or wind specifically, we combine these two as Total Energy. This quantity is less volatile than the individual sources as adding two random variables or convoluting them will reduce the variance. This effect is observed as we see the median total energy is greater than the sum of the median solar and wind energy and the mean value is closer to the median value. For the market prices we wee similar mean and median values in the DAP and SSP but the domain of the SSP is much larger. Also, it is notable that both have negative values indicating there are times of an energy surplus being penalized by the market.
+@tbl-energy-data-summary and @tbl-weather-data-summary provide summary statistics for the energy and weather data used throughout this report. We have the amount of power produced from solar, wind, and combined total power as well as DAP and SSP. The DAP is the Intermittent Market Reference Price published by the Low Carbon Contracts Company. It is the weighted average of the prices from Great Britain's two-day-ahead auctions, operated by NordPool and EPEX Spot. The SSP is calculated and distributed by Elexon and is the price paid for energy imbalances in the market. As our task is to make bids on the total energy rather than the solar or wind specifically, we combine these two as Total Energy. This quantity is less volatile than the individual sources as adding two random variables or convoluting them will reduce the variance. This effect is observed as we see the median total energy is greater than the sum of the median solar and wind energy and the mean value is closer to the median value. For the market prices we wee similar mean and median values in the DAP and SSP but the domain of the SSP is much larger. Also, it is notable that both have negative values indicating there are times of an energy surplus being penalized by the market.
 
 ```{julia}
 #| label: loading-data
@@ -123,24 +123,27 @@ end
 data = getdata()
 ```
 
+::: {#tbl-energy-data-summary}
 ```{julia}
 #| label: rebase-data-summary
-#| tbl-cap: "Rebase Energy Data Summary"
 rebase_summary = describe(data, :mean, :min, :median, :max, cols=energy_cols)
 rebase_summary.variable = ["Solar MW/hr", "Wind MW/hr", "Total Energy MW/hr", "DAP GBP/MWh", "SSP GBP/MWh"]
 rebase_summary
 ```
+Rebase Energy Data Summary
+:::
 
-Looking at the tabular summary of the weather data, we observe that the mean and medians are roughly in the middle of the feature ranges for all, but cloud cover. With a mean of 71% and a median of 92%, we see that the data is heavily skewed towards being more cloudy.
+Looking at the tabular summary of the weather data in @tbl-weather-data-summary, we observe that the mean and medians are roughly in the middle of the feature ranges for all, but cloud cover. With a mean of 71% and a median of 92%, we see that the data is heavily skewed towards being more cloudy.
 
+::: {#tbl-weather-data-summary}
 ```{julia}
 #| label: weather-data-summary
-#| tbl-cap: "Weather Data Summary"
 weather_summary = describe(data, :mean, :min, :median, :max, cols=weather_cols)
 weather_summary.variable = ["Temperature (°C)", "Wind Speed (kph)", "Wind Direction (°)", "Cloud Cover (%)", "Visibility (km)"]
 weather_summary
 ```
-
+Weather Data Summary
+:::
 
 ## Data Visualizations
 
@@ -184,10 +187,11 @@ visibiilty = cgrad([:white, :darkblue])
 energy_prod = cgrad([:white, :hotpink])
 ```
 
-We first examine the histograms of our weather and energy features. The weather data is consistent with what could be ascertained from the summary statistics.
+We first examine the histograms of our weather and energy features. The weather data is consistent with what could be ascertained from the summary statistics previously. @fig-weather-data-summary-histogram shows the distribution of these features.
+
+:::{#fig-weather-data-summary-histogram}
 ```{julia}
 #| label: weather-data-summary-histogram
-#| fig-cap: "Weather Data Histograms"
 
 @df data plot(
     legend=false,
@@ -197,31 +201,35 @@ We first examine the histograms of our weather and energy features. The weather 
     histogram(:visibility, color=:darkblue, xlabel="Visibility (km)")
 )
 ```
+Weather Data Histograms
+:::
 
-The histograms of the energy data provide a new context for our analysis. We observe how the Total Energy resembles a Normal distribution compared to the Exponential decay of the Solar Energy and the Beta distribution of the Wind Energy. The market prices also resemble a normal distribution with two notable exceptions. They both have fat tails which indicates there are times when very low prices are observed with relative frequency. This is a primary source of risk for trading. The second difference is that the SSP exhibits a bimodal distribution. The fat left tail of the SSP is associated with energy surplus, the right peak is associated with energy deficit, and the central peak is the price when the system is relatively balanced. This sets up several distinct states of the system which could greatly alter the best trading bid regardless of the actual energy production. For instance, if the system is in a deficit, a high-risk operator could commit no energy and trade everything produced at a price that is possibly much higher than the day ahead price. In reality, this likely requires more knowledge of the future and control of the system than is available to any operator and any arbitrage situation would quickly be eliminated by the market.
+The histograms of the energy data in @fig-energy-data-summary-histogram provide a new context for our analysis. We observe how the Total Energy resembles a Normal distribution compared to the Exponential decay of the Solar Energy and the Beta distribution of the Wind Energy. The market prices also resemble a normal distribution with two notable exceptions. They both have fat tails which indicates there are times when very low prices are observed with relative frequency. This is a primary source of risk for trading. The second difference is that the SSP exhibits a bimodal distribution. The fat left tail of the SSP is associated with energy surplus, the right peak is associated with energy deficit, and the central peak is the price when the system is relatively balanced. This sets up several distinct states of the system which could greatly alter the best trading bid regardless of the actual energy production. For instance, if the system is in a deficit, a high-risk operator could commit no energy and trade everything produced at a price that is possibly much higher than the day ahead price. In reality, this likely requires more knowledge of the future and control of the system than is available to any operator and any arbitrage situation would quickly be eliminated by the market.
 
+:::{#fig-energy-data-summary-histogram}
 ```{julia}
 #| label: energy-data-summary-histogram
-#| fig-cap: "Energy Data Histograms"
 
 @df data plot(
     legend=false,
-    histogram(:Solar, color=cmap["Solar"], xlabel="Solar Production (MW/hr)"),
-    histogram(:Wind, color=cmap["Wind"], xlabel="Wind Production (MW/hr)"),
-    histogram(:TotalEnergy, color=cmap["TotalEnergy"], xlabel="Total Energy Production (MW/hr)"),
-    histogram(:DAP, color=cmap["DAP"], xlabel="Day Ahead Price (£/MWh)"),
-    histogram(:SSP, color=cmap["SSP"], xlabel="Single Settlement Price (£/MWh)"),
+    histogram(:Solar, color=cmap["Solar"], xlabel="Solar"),
+    histogram(:Wind, color=cmap["Wind"], xlabel="Wind"),
+    histogram(:TotalEnergy, color=cmap["TotalEnergy"], xlabel="Total Energy"),
+    histogram(:DAP, color=cmap["DAP"], xlabel="DAP"),
+    histogram(:SSP, color=cmap["SSP"], xlabel="SSP"),
 )
 ```
+Energy Data Histograms
+:::
+
 Next, we study the day-ahead and then the single settlement prices as time histories and their correlations to weather and daily seasonality. In each group of plots, the top plot shows the entire history of the data while the second provides a closer look at a single week. The bottom plots show the prices vs. temperature and total energy production with the right side showing the daily seasonality. The relative variability of the SSP compared to the DAP is highlighted by the scales being the same in the first and second plots.
 
-For the DAP, we see a clear pattern with a few random dips in the price but eventually returning to the seasonal mean. The week plot provides a clearer look at the typical pattern. The daily seasonal plot shows the duck curve associated with high prices in the morning and evening which is driven by both energy production and cyclical demand. The shape of the curves is there is a concentrated group at the upper end of the prices, but there are many times when price curves are much lower.
+For the DAP plots in @fig-monthly-dap-energy-price-plots, we see a clear pattern with a few random dips in the price but eventually returning to the seasonal mean. The week plot provides a clearer look at the typical pattern. The daily seasonal plot shows the duck curve associated with high prices in the morning and evening which is driven by both energy production and cyclical demand. The shape of the curves is there is a concentrated group at the upper end of the prices, but there are many times when price curves are much lower.
 In the temperature plot, we see that the price tends to show the same general fluctuations regardless of the temperature. There are two days around April 9th which seem to have low costs associated with the warmest days. This relative price indifference to temperature is unexpected but may be explained by the type of weather typical for this region and the current lack of air conditioning systems. The bottom plot shows how the price changes with total energy production from solar and wind. We cannot pick an obvious pattern looking at the monthly plot, but we can see that prices are generally higher at times of day when production is higher. There are two drivers which are somewhat counteracting each other. The first is that demand is typically going to be higher because people are awake and using electricity. At the same time, production is higher because the sun is up and powering solar panels. The dynamics in the system are complex as price, demand, weather, and production are inextricably linked.
 
+:::{#fig-monthly-dap-energy-price-plots}
 ```{julia}
 #| label: monthly-dap-energy-price-plots
-#| fig-cap: "Day Ahead Prices"
-#| fig-alt: "Plots of day ahead prices"
 @df data plot(
     size=(800, 600),
     layout = @layout([
@@ -308,14 +316,15 @@ In the temperature plot, we see that the price tends to show the same general fl
     )
 )
 ```
+Day Ahead Prices. Top: complete time history. Middle: one-week history. Bottom Left: price history vs. temperature (top) and total energy production (bottom). Bottom right: daily seasonality of price vs. temperature (top) and total energy production (bottom).
+:::
 
-We see different characteristics with the SSP as the signal is hardly distinguishable from a random walk. The domain of the SSP is 
+We see different characteristics with the SSP plots in @fig-monthly-ssp-energy-price-plots as the signal is hardly distinguishable from a random walk. The domain of the SSP is 
 The SSP is a different story as the time series is twice that of the DAP and it traverses from low values to high values in cycles that are not obvious. The only seasonality observed is that around 18:00, the SSP typically constricts to a range between about 25 and 100. The curves themselves look like spaghetti which further indicates that the change in SSP is practically random. As mentioned above, if the SSP became predictable, the market would eliminate the arbitrage opportunity.
 
+:::{#fig-monthly-ssp-energy-price-plots}
 ```{julia}
 #| label: monthly-ssp-energy-price-plots
-#| fig-cap: "Single Settlement Prices"
-#| fig-alt: "Plots of imbalance prices"
 @df data plot(
     size=(800, 600),
     layout = @layout([
@@ -402,12 +411,14 @@ The SSP is a different story as the time series is twice that of the DAP and it 
     )
 )
 ```
+Single Settlement Prices. Top: complete time history. Middle: one-week history. Bottom Left: price history vs. temperature (top) and total energy production (bottom). Bottom right: daily seasonality of price vs. temperature (top) and total energy production (bottom).
+:::
 
-The next data visualization depicts a statistical summary of the energy production and market prices for each day in the period as well as grouped by day of the week and hour of the day. The violin plots indicate the density of observations near that level for the given group. The boxplots quantify the spread by showing the mean, quartiles, and outliers. These plots capture the trend over the entire time and the daily seasonality better than a single time series plot. Where before the SSP looked like a random walk, we can observe some correlation to the DAP. Still, we note that the variance of the SSP is much wider. The duck curve for the DAP is more pronounced and we see there is a fairly right upper and lower quartiles with outliers far beyond this range. Lastly, we note that the energy production is somewhat random over a longer period, but fairly consistent on a daily cycle.
+The next data visualization in @fig-violin-plots depicts a statistical summary of the energy production and market prices for each day in the period as well as grouped by day of the week and hour of the day. The violin plots indicate the density of observations near that level for the given group. The boxplots quantify the spread by showing the mean, quartiles, and outliers. These plots capture the trend over the entire time and the daily seasonality better than a single time series plot. Where before the SSP looked like a random walk, we can observe some correlation to the DAP. Still, we note that the variance of the SSP is much wider. The duck curve for the DAP is more pronounced and we see there is a fairly right upper and lower quartiles with outliers far beyond this range. Lastly, we note that the energy production is somewhat random over a longer period, but fairly consistent on a daily cycle.
 
+:::{#fig-violin-plots}
 ```{julia}
 #| label: violin-plots
-#| fig-cap: "Single Day, Weekly, and Daily Trends"
 
 @df data plot(
     size=(800, 500),
@@ -539,12 +550,15 @@ The next data visualization depicts a statistical summary of the energy producti
     end
 )
 ```
+Statistical summary of the energy production and market prices for each day in the period as well as grouped by day of the week and hour of the day.
+:::
 
-The pairplot shows the direct correlation or lack thereof among the key variables.
+The pairplot in @fig-correlation-plots the direct correlation or lack thereof among the key variables. Cloud cover is not a strong indicator for two reasons. First, it would have the strongest impact on the system during the daytime only. Second, it is an asymmetric feature skewed towards very cloudy. Windspeed is a strong predictor of total energy as expected and there is a negative trend between total energy production and market prices. This indicates that our system is not an outlier from others in this grid as all correlations are as expected.
 
+:::{#fig-correlation-plots}
 ```{julia}
 #| label: correlation-plots
-#| fig-cap: "Correlation PairPlot"
+
 
 @df data corrplot(
     [:cloudcover :windspeed :TotalEnergy :DAP :SSP],
@@ -554,11 +568,14 @@ The pairplot shows the direct correlation or lack thereof among the key variable
     bins=20
 )
 ```
+Correlation PairPlot
+:::
 
-The group of marginal kernel density estimate (KDE) plots offers a final visualization of the correlation among the key features. At the top left we see a slight positive correlation between Total Energy and Wind Speed. At the top right, we observe that the DAP and Total Energy are perpendicular to each other, indicating no correlation. The same observation is true for the Total Energy and SSP in the bottom left. In the bottom right we see two correlated regions. Most significantly, we see that the very negative SSP prices are associated with the lowest DAP prices. Then we see a general correlation for the main region of prices but the two upper peaks of the SSP are independent of the DAP.
+The group of marginal kernel density estimate (KDE) plots in @fig-marginal-kde offer a final visualization of the correlation among the key features. At the top left we see a slight positive correlation between Total Energy and Wind Speed. At the top right, we observe that the DAP and Total Energy are perpendicular to each other, indicating no correlation. The same observation is true for the Total Energy and SSP in the bottom left. In the bottom right we see two correlated regions. Most significantly, we see that the very negative SSP prices are associated with the lowest DAP prices. Then we see a general correlation for the main region of prices but the two upper peaks of the SSP are independent of the DAP.
+
+:::{#fig-marginal-kde}
 ```{julia}
 #| label: marginal-kde
-#| fig-cap: "Marginal KDEs"
 
 @df data plot(
     marginalkde(
@@ -583,6 +600,8 @@ The group of marginal kernel density estimate (KDE) plots offers a final visuali
     )
 )
 ```
+Marginal KDEs. Top Left: Total Energy vs. Wind Speed. Top Right: Total Energy vs. DAP. Bottom Left: Total Energy vs. SSP. Bottom Right: DAP vs. SSP.
+:::
 
 ## Data Conclusions
 The analysis of the time series and correlations among the data support our hypothesis that there are predictable dynamics at play which would allow for accurate predictions. However, the dynamics are not straightforward and highly nonlinear. We consider this system to be an ideal one to model with a neural network as it can approximate any function. While we lose explainability and we are only left with a point forecast, we can use the methods mentioned at the outset to use the predictions in probabilistic trading strategies. The next section will detail the LSTM model we used to make these predictions.
@@ -885,12 +904,11 @@ data = groupby(data, :dataset)
 
 We simulated the trading environment by making predictions up to 48 hours out from a given time. For instance, we would run the model on data up to 8:00 AM on Monday, the time at which we must submit bids for the period of 8:30 AM Tuesday to 8:00 AM Wednesday. Beginning at 8:30 AM on Monday, the model pulls "forecasted" weather data and its own latest predictions to predict the next outputs. This continues until the prediction period is complete. We observe the performance on the testing data below.
 
-Qualitatively, we observe the LSTM predictions are sensible and follow the general characteristics of the target variables. The predicted values are plotted in color over the actual values in grey. The solar and wind predictions capture the general moving average but are not as accurate individually as the total energy predictions. The DAP prediction also generally captures the trend and seasonality of the actual values. The SSP predictions are, as expected, less precise than the other predictions. It is unable to capture the random fluctuations in the values but it stays in the general range of the actual values.
+Qualitatively, we observe the LSTM predictions in @fig-predictions are sensible and follow the general characteristics of the target variables. The predicted values are plotted in color over the actual values in grey. The solar and wind predictions capture the general moving average but are not as accurate individually as the total energy predictions. The DAP prediction also generally captures the trend and seasonality of the actual values. The SSP predictions are, as expected, less precise than the other predictions. It is unable to capture the random fluctuations in the values but it stays in the general range of the actual values.
 
+:::{#fig-predictions}
 ```{julia}
 #| label: plot-predictions
-#| fig-cap: "Predictions"
-#| fig-alt: "Plot of predictions"
 
 @df data[("test", )] plot(
     xlims=(DateTime(2024, 4, 14, 8, 30), DateTime(2024, 4, 20, 8, 00)),
@@ -924,12 +942,14 @@ Qualitatively, we observe the LSTM predictions are sensible and follow the gener
     )
 )
 ```
+Test Data Predictions
+:::
 
-We check the Mean Absolute and Root Mean Squared Error for all three testing sets to ensure the model is not overfitting. The results are shown in the tables below.
+We check the Mean Absolute and Root Mean Squared Error for all three testing sets to ensure the model is not overfitting. The results are shown in @tbl-MAE-error and @tbl-RMSE-error.
 
+:::{#tbl-MAE-error}
 ```{julia}
 #| label: test-error
-#| tbl-cap: "Mean Absolute Error"
 
 MAE_df = DataFrame(
     feature = energy_cols,
@@ -950,10 +970,13 @@ MAE_df = DataFrame(
     ]
 )
 ```
+Mean Absolute Error
+:::
 
+:::{#tbl-RMSE-error}
 ```{julia}
 #| label: test-error-squared
-#| tbl-cap: "Root Mean Square Error"
+
 RMSE_df = DataFrame(
     features = energy_cols,
     Train = [sqrt(mean((data[("test", )][:, col] .- data[("test", )][:, string(col, "_pred")]).^2))
@@ -967,14 +990,16 @@ RMSE_df = DataFrame(
     ]
 )
 ```
+Root Mean Square Error
+:::
 
 The error values are fairly consistent across datasets for the two error measures indicating that we have not overfit the model. 
 
-Looking at the residual histograms below, we see they resemble Normal distributions centered on zero. This indicates we will be able to conformalize the model to obtain a probabilistic forecast. Solar residuals have most values at zero because the model correctly predicts no solar energy production at night. We get around this by using the combined energy as we don't explicitly have to know the solar and the wind energy production.
+Looking at the residual histograms in @fig-calib-residuals-histograms, we see they resemble Normal distributions centered on zero. This indicates we will be able to conformalize the model to obtain a probabilistic forecast. Solar residuals have most values at zero because the model correctly predicts no solar energy production at night. We get around this by using the combined energy as we don't explicitly have to know the solar and the wind energy production.
 
+:::{#fig-calib-residuals-histograms}
 ```{julia}
 #| label: plot-residuals
-#| fig-cap: "Calibration Data Residuals"
 
 @df data[("test", )] plot(
     layout=@layout((5, 1)),
@@ -1008,6 +1033,8 @@ Looking at the residual histograms below, we see they resemble Normal distributi
     )
 )
 ```
+Calibration Data Residuals
+:::
 
 # Conformalizing LSTM
 
@@ -1020,7 +1047,7 @@ The process is essentially accomplished in two steps. First, non-conformity scor
 
 ## Performance
 
-The heatmaps of the non-conformity of the Total Energy, DAP, and SSP show the results. The x-axis is the time of day, and the y-axis is the probability of the true value being within the non-conformity score indicated by the color bar. Blue values are desirable as they indicate a low non-conformity score while red indicates a high non-conformity score. For instance, at 3:00 AM, the Total Energy score was low with a value of around 200 with probability 1. So we can be very confident the true value will be within 200 MWh of the prediction. Conversely, the DAP at 7:00 AM has a relatively high non-conformity score that dips down below the 0.5 quantile. This means that we cannot even be sure that true DAP will be within 40 GBP/MWh with better than 50% probability.
+The heatmaps in @fig-nonconformity-heatmaps show the non-conformity of the Total Energy, DAP, and SSP show the results. The x-axis is the time of day, and the y-axis is the probability of the true value being within the non-conformity score indicated by the color bar. Blue values are desirable as they indicate a low non-conformity score while red indicates a high non-conformity score. For instance, at 3:00 AM, the Total Energy score was low with a value of around 200 with probability 1. So we can be very confident the true value will be within 200 MWh of the prediction. Conversely, the DAP at 7:00 AM has a relatively high non-conformity score that dips down below the 0.5 quantile. This means that we cannot even be sure that true DAP will be within 40 GBP/MWh with better than 50% probability.
 
 ```{julia}
 #| label: conformalizing-LSTM
@@ -1054,10 +1081,10 @@ CP_data = groupby(CP_data, :Time)
 CP(col, time, α=0.75) = quantile(CP_data[(time, )][:, Symbol(string(col, "_score"))], α)
 ```
 
+:::{#fig-nonconformity-heatmaps}
 ```{julia}
 #| label: plot-nonconformity
-#| fig-cap: "Nonconformity Scores Probabilities"
-#| 
+
 alphas = 0.0:0.01:1.0
 one_day = Time(0):Minute(30):Time(23,30)
 
@@ -1094,6 +1121,8 @@ plot(
     )
 )
 ```
+Nonconformity Scores Probabilities
+:::
 
 # Market Trading
 
@@ -1175,11 +1204,11 @@ We implemented CVaR by sampling residuals from the calibration data and adding t
 4. At each available trade amount, calculate the mean of the lower 33% of the revenues in the scenarios. This is the CVaR.
 5. Find the trade amount with the maximum CVaR.
 
-The results of this process are depicted below. The multi-colored curves represent different scenarios evaluated for each available trade amount. The color represents how far off the predicted energy production was from the actual energy production. The solid black curve is the mean, or expected value of trading that amount of energy for those scenarios. The dashed black curve is the CVaR. For this optimization problem with a single decision variable, how much to trade, we can graphically see the maximum is at about 700 MWh. So the decision is made to trade that amount and the actual revenue is shown as the green diamond. Also plotted are the "+" showing the revenue from a perfect prediction and commitment of the energy production and the "o" showing the point prediction and associated revenue. The fact that the CVaR revenue is higher than the CVaR curve indicates the true outcome was not in the worst 33% of scenarios. In this case, the maximal CVaR happens to be close to the maximal mean, but it is not always the case. Typically, we would see the CVaR peak at a point off of the peak of the mean curve. The point is to maximize the expectation of the worst outcomes, but this comes at the cost of not maximizing the outcome. If one had infinite funds and could assume infinite risk, the optimal strategy would be to maximize the expected value. In the real world, we prefer to limit our risk exposure. Lastly, we note that CVaR performs better than the point forecast. With CVaR we have accounted for our uncertainty about the energy production and market prices while the point forecast is only considering production and no uncertainty. This highlights the importance of considering the uncertainty in the predictions and trading.
+The results of this process are depicted in @fig-cvar-plot. The multi-colored curves represent different scenarios evaluated for each available trade amount. The color represents how far off the predicted energy production was from the actual energy production. The solid black curve is the mean, or expected value of trading that amount of energy for those scenarios. The dashed black curve is the CVaR. For this optimization problem with a single decision variable, how much to trade, we can graphically see the maximum is at about 700 MWh. So the decision is made to trade that amount and the actual revenue is shown as the green diamond. Also plotted are the "+" showing the revenue from a perfect prediction and commitment of the energy production and the "o" showing the point prediction and associated revenue. The fact that the CVaR revenue is higher than the CVaR curve indicates the true outcome was not in the worst 33% of scenarios. In this case, the maximal CVaR happens to be close to the maximal mean, but it is not always the case. Typically, we would see the CVaR peak at a point off of the peak of the mean curve. The point is to maximize the expectation of the worst outcomes, but this comes at the cost of not maximizing the outcome. If one had infinite funds and could assume infinite risk, the optimal strategy would be to maximize the expected value. In the real world, we prefer to limit our risk exposure. Lastly, we note that CVaR performs better than the point forecast. With CVaR we have accounted for our uncertainty about the energy production and market prices while the point forecast is only considering production and no uncertainty. This highlights the importance of considering the uncertainty in the predictions and trading.
 
+:::{#fig-cvar-plot}
 ```{julia}
 #| label: cvar-plot-example
-#| fig-cap: "Conditional Value at Risk"
 
 #this_trade = rand(1:size(data[("test", )], 1))
 #this_time = Time(data[("test", )][this_trade, :DateTime])
@@ -1286,6 +1315,8 @@ scatter!(
     shape=:diamond, ms=10, mc=:green
 )
 ```
+Conditional Value at Risk Example (2024-04-14 22:30)
+:::
 
 ```{julia}
 #| label: cvar-function
@@ -1367,11 +1398,12 @@ CSV.write("src/data/data_predictions_revenues.csv", vcat(data...))
 
 ## Performance
 
-The plot of cumulative revenue over the testing period for each trading strategy is shown below. The perfect forecast is a point of reference for what would be achieved if the operator could perfectly predict the production and not trade on the real-time market at all. As expected, this is the highest value even though it does not consider market prices. Next, we see that CP-adjusted commitment outperforms the other strategies. As alluded to earlier, this may be a case of gambling and getting lucky as there is no justification for this reduction other than that it happened to perform well. There may be a strong underlying reason which would explain why this is a good strategy. Next, we see that CVaR is just behind the CP-adjusted strategy. Lastly, the point forecast performed the worst as it suffered the biggest loss in the first week and never fully recovered to the level of the other two strategies.
+The plot of cumulative revenue over the testing period for each trading strategy is shown in @fig-cumulative-revenue. The perfect forecast is a point of reference for what would be achieved if the operator could perfectly predict the production and not trade on the real-time market at all. As expected, this is the highest value even though it does not consider market prices. Next, we see that CP-adjusted commitment outperforms the other strategies. As alluded to earlier, this may be a case of gambling and getting lucky as there is no justification for this reduction other than that it happened to perform well. There may be a strong underlying reason which would explain why this is a good strategy. Next, we see that CVaR is just behind the CP-adjusted strategy. Lastly, the point forecast performed the worst as it suffered the biggest loss in the first week and never fully recovered to the level of the other two strategies.
 
+
+:::{#fig-cumulative-revenue}
 ```{julia}
 #| label: revenue-plots
-#| fig-cap: "Revnue vs. Time"
 
 @df data[("test", )] plot(
     :DateTime,
@@ -1381,6 +1413,9 @@ The plot of cumulative revenue over the testing period for each trading strategy
     lw=3,
 )
 ```
+Test Data Cumulative Revenues
+:::
+
 
 # Conclusions
 
