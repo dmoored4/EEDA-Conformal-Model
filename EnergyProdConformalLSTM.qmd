@@ -19,8 +19,9 @@ author:
       - name: Rutgers University
         department: Industrial and Systems Engineering
 
-abstract: We optimized the market trading of a renewable energy generation operator with conditional value at risk based on probabilistic forecasts made with a conformalized Long Short-term Memory (LSTM) recurrent neural network. This work demonstrates an end-to-end workflow of how field data can be ingested, analyzed, and exploited to reduce risk exposure for the operator. This is financially beneficial to the individual operator, but taken to a large scale this methodology increases the incentive for renewable generation participation which should drive cost and emissions down. This work used only eight features with favorable results, so it is expected that further studies and more advanced models with the same architecture would provide better yield.
+abstract: In this case study, we use the IEEE Hybrid Energy Competition data to create a Long Short-Term Memory (LSTM) model to predict the combined energy for the Hornsea-1 Wind Farm and a nearby solar farm in eastern England. We then examine the revenue outcomes of different energy trading strategies that use the predictions from the LSTM. This study provides a simple, real-world example of the benefits of proper application of decision-making under uncertainty principles in the energy market. While the LSTM model provides point predictions, we use additional data to obtain probabilistic forecasts which are used to optimize the Conditional Value at Risk. The revenue outcomes are greatly improved with CVaR as the trade decisions gain critical context of the uncertainty of the model predictions for both energy production and market prices. This study demonstrates an end-to-end workflow of how data can be ingested, processed into a model, and exploited to reduce financial risk for a renewable energy generation operator. In the long term, reducing this risk is crucial to enticing more renewable energy generation participants which will drive down costs and emissions.
 keywords: [Julia, Flux, LSTM, Conformal Prediction, conditional value at risk, renewable energy, energy markets, optimization, revenue, risk management]
+
 date: 2024-05-08
 
 bibliography: bibliography.bib
@@ -1189,10 +1190,11 @@ end
 
 ## Revenue from Conditional Value at Risk
 
-The shortcomings of the above methods are primarily that they do not consider the market prices or the joint probability of the predictions and the correlation of the errors.
-
 ### Overview
-Stochastic optimization using Conditional Value at Risk allows us to incorporate this information into the trading strategy. In this situation, we are risk averse and our goal is to maximize the expected value of some lower quartile of possible outcomes. In this study, we opted for 33% to indicate that more likely than not, in the worst 33% of cases, we will have a certain amount of revenue. This is a more sophisticated method than the previous two and is a more realistic representation of the trading environment. Future work could include a specific risk profile that would specify that, for example, the probability of losing X in any one time period or day must be less than Y% or the probability of ever falling below a certain threshold must be less than Z%.
+
+Stochastic optimization of the trade decisions using Conditional Value at Risk allows us to consider aspects that the point prediction and CP method cannot. Specifically, the trade decision can be optimized directly for revenue outcomes while considering uncertainties. This also requires the uncertainties of the market prices to be treated as well. This additional context results in a defensible strategy that can optimize an operator's trading strategy within a specified risk tolerance.
+
+For this strategy, we assume we are risk averse and our goal is to maximize the expected value of some lower quartile of possible outcomes. In this study, we opted for 33% to indicate that more likely than not, in the worst 33% of cases, we will have a certain amount of revenue. This is a more sophisticated method than the previous two and is a more realistic representation of the trading environment. Future work could include a specific risk profile that would specify that, for example, the probability of losing X in any one time period or day must be less than Y% or the probability of ever falling below a certain threshold must be less than Z%.
 
 ### Implementation
 
