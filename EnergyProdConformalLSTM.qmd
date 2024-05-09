@@ -2,9 +2,9 @@
 title: Optimizing Energy Market Trading with Conformal Predictions and Conditional Value at Risk
 
 format:
-    ieee-pdf:
-        keep-tex: true
-    # ieee-html: default
+    html:
+        toc: true
+        toc-location: left-body
 
 author:
   - id: dmoored4
@@ -19,8 +19,8 @@ author:
       - name: Rutgers University
         department: Industrial and Systems Engineering
 
-abstract: In this case study, we use the IEEE Hybrid Energy Competition data to create a Long Short-Term Memory (LSTM) model to predict the combined energy for the Hornsea-1 Wind Farm and a nearby solar farm in eastern England. We then examine the revenue outcomes of different energy trading strategies that use the predictions from the LSTM. This study provides a simple, real-world example of the benefits of proper application of decision-making under uncertainty principles in the energy market. While the LSTM model provides point predictions, we use additional data to obtain probabilistic forecasts which are used to optimize the Conditional Value at Risk. The revenue outcomes are greatly improved with CVaR as the trade decisions gain critical context of the uncertainty of the model predictions for both energy production and market prices. This study demonstrates an end-to-end workflow of how data can be ingested, processed into a model, and exploited to reduce financial risk for a renewable energy generation operator. In the long term, reducing this risk is crucial to enticing more renewable energy generation participants which will drive down costs and emissions.
-keywords: [Julia, Flux, LSTM, Conformal Prediction, conditional value at risk, renewable energy, energy markets, optimization, revenue, risk management]
+abstract: In this case study, we use data from the Institute of Electrical and Electronic Engineers (IEEE) Hybrid Energy Competition to create a Long Short-Term Memory (LSTM) model to predict the market prices and the combined energy for the Hornsea-1 Wind Farm and a nearby solar farm in eastern England. We then examine the revenue outcomes of different energy trading strategies that use the predictions from the LSTM. This study provides a simple, real-world example of the benefits of proper application of decision-making under uncertainty principles in the energy market. While the LSTM model provides point predictions, we use additional data to obtain probabilistic forecasts which are used to optimize the Conditional Value at Risk (CVaR). The revenue outcomes are greatly improved with CVaR as the trade decisions gain critical context of the uncertainty of the model predictions for both energy production and market prices. This study demonstrates an end-to-end workflow of how data can be ingested, processed into a model, and exploited to reduce financial risk for a renewable energy generation operator. In the long term, reducing this risk is crucial to enticing more renewable energy generation participants which will drive down costs and emissions.
+keywords: [Energy Forecasting, Renewable Energy, Energy Analytics, Energy Markets, Conditional Value at Risk, Conformal Prediction, Long Short-Term Memory, LSTM, Julia, Flux, Risk Management]
 
 date: 2024-05-08
 
@@ -67,7 +67,7 @@ We have obtained datasets from two sources: the competition itself which provide
 
 ## Data Insights
 
-@tbl-energy-data-summary and @tbl-weather-data-summary provide summary statistics for the energy and weather data used throughout this report. We have the amount of power produced from solar, wind, and combined total power as well as DAP and SSP. The DAP is the Intermittent Market Reference Price published by the Low Carbon Contracts Company. It is the weighted average of the prices from Great Britain's two-day-ahead auctions, operated by NordPool and EPEX Spot. The SSP is calculated and distributed by Elexon and is the price paid for energy imbalances in the market. As our task is to make bids on the total energy rather than the solar or wind specifically, we combine these two as Total Energy. This quantity is less volatile than the individual sources as adding two random variables or convoluting them will reduce the variance. This effect is observed as we see the median total energy is greater than the sum of the median solar and wind energy and the mean value is closer to the median value. For the market prices we wee similar mean and median values in the DAP and SSP but the domain of the SSP is much larger. Also, it is notable that both have negative values indicating there are times of an energy surplus being penalized by the market.
+@tbl-energy-data-summary and @tbl-weather-data-summary provide summary statistics for the energy and weather data used throughout this report. We have the amount of power produced from solar, wind, and combined total power as well as DAP and SSP. The DAP is the Intermittent Market Reference Price published by the Low Carbon Contracts Company. It is the weighted average of the prices from Great Britain's two-day-ahead auctions, operated by NordPool and EPEX Spot. The SSP is calculated and distributed by Elexon and is the price paid for energy imbalances in the market. As our task is to make bids on the total energy rather than the solar or wind specifically, we combine these two as Total Energy. This quantity is less volatile than the individual sources as adding two random variables or convoluting them will reduce the variance. This effect is observed as we see the median total energy is greater than the sum of the median solar and wind energy and the mean value is closer to the median value. For the market prices we see similar mean and median values in the DAP and SSP but the domain of the SSP is much larger. Also, it is notable that both have negative values indicating there are times of an energy surplus being penalized by the market.
 
 ```{julia}
 #| label: loading-data
@@ -223,7 +223,7 @@ The histograms of the energy data in @fig-energy-data-summary-histogram provide 
 Energy Data Histograms
 :::
 
-Next, we study the day-ahead and then the single settlement prices as time histories and their correlations to weather and daily seasonality. In each group of plots, the top plot shows the entire history of the data while the second provides a closer look at a single week. The bottom plots show the prices vs. temperature and total energy production with the right side showing the daily seasonality. The relative variability of the SSP compared to the DAP is highlighted by the scales being the same in the first and second plots.
+Next, we study the day-ahead and then the single settlement prices as time histories and their correlations to weather and daily seasonality in @fig-monthly-dap-energy-price-plots and @fig-monthly-ssp-energy-price-plots. In each group of plots, the top plot shows the entire history of the data while the second provides a closer look at a single week. The bottom plots show the prices vs. temperature and total energy production with the right side showing the daily seasonality. The relative variability of the SSP compared to the DAP is highlighted by the scales being the same in the first and second plots.
 
 For the DAP plots in @fig-monthly-dap-energy-price-plots, we see a clear pattern with a few random dips in the price but eventually returning to the seasonal mean. The week plot provides a clearer look at the typical pattern. The daily seasonal plot shows the duck curve associated with high prices in the morning and evening which is driven by both energy production and cyclical demand. The shape of the curves is there is a concentrated group at the upper end of the prices, but there are many times when price curves are much lower.
 In the temperature plot, we see that the price tends to show the same general fluctuations regardless of the temperature. There are two days around April 9th which seem to have low costs associated with the warmest days. This relative price indifference to temperature is unexpected but may be explained by the type of weather typical for this region and the current lack of air conditioning systems. The bottom plot shows how the price changes with total energy production from solar and wind. We cannot pick an obvious pattern looking at the monthly plot, but we can see that prices are generally higher at times of day when production is higher. There are two drivers which are somewhat counteracting each other. The first is that demand is typically going to be higher because people are awake and using electricity. At the same time, production is higher because the sun is up and powering solar panels. The dynamics in the system are complex as price, demand, weather, and production are inextricably linked.
@@ -415,7 +415,7 @@ The SSP is a different story as the time series is twice that of the DAP and it 
 Single Settlement Prices. Top: complete time history. Middle: one-week history. Bottom Left: price history vs. temperature (top) and total energy production (bottom). Bottom right: daily seasonality of price vs. temperature (top) and total energy production (bottom).
 :::
 
-The next data visualization in @fig-violin-plots depicts a statistical summary of the energy production and market prices for each day in the period as well as grouped by day of the week and hour of the day. The violin plots indicate the density of observations near that level for the given group. The boxplots quantify the spread by showing the mean, quartiles, and outliers. These plots capture the trend over the entire time and the daily seasonality better than a single time series plot. Where before the SSP looked like a random walk, we can observe some correlation to the DAP. Still, we note that the variance of the SSP is much wider. The duck curve for the DAP is more pronounced and we see there is a fairly right upper and lower quartiles with outliers far beyond this range. Lastly, we note that the energy production is somewhat random over a longer period, but fairly consistent on a daily cycle.
+The next data visualization in @fig-violin-plots depicts a statistical summary of the energy production and market prices for each day in the period as well as grouped by day of the week and hour of the day. The violin plots indicate the density of observations near that level for the given group. The boxplots quantify the spread by showing the mean, quartiles, and outliers. These plots capture the trend over the entire time and the daily seasonality better than a single time series plot. Where before the SSP looked like a random walk, we can observe some correlation to the DAP. Still, we note that the variance of the SSP is much wider. The duck curve for the DAP is more pronounced and we see there is a fairly tight first quartile, but with outliers far beyond this range. Lastly, we note that the energy production is somewhat random over a longer period, but fairly consistent on a daily cycle.
 
 :::{#fig-violin-plots}
 ```{julia}
@@ -609,7 +609,7 @@ The analysis of the time series and correlations among the data support our hypo
 
 # Long Short-Term Memory Model
 
-We implemented an LSTM recurrent neural network multi-target regressor to predict the solar, wind, total energy, DAP, and SSP for the next time step. We reasoned that an LSTM solves the vanishing gradient problem associated with generic recurrent neural networks and is built to work with time-series data. The complex dynamics among the features can be approximated by the dense output layer. Outputting all targets at once is computationally efficient and provides the model with additional information when updating the parameters. The seasonality of the solar production and DAP were provided directly a sinusoidal waves with periods of 24 hours and 12 hours, respectively. All inputs and outputs were normalized so that the different scales of the multi-target regression targets would not affect the model's learning.
+We implemented an LSTM recurrent neural network (RNN) multi-target regressor to predict the solar, wind, total energy, DAP, and SSP for the next time step. We selected an LSTM over a generic RNN or Gated Recurrent Unit (GRU) because LSTMs solve the so-called vanishing gradient problem associated with generic RNN but still exhibit longer "memory" of past events compared to GRUs. The complex dynamics among the features can be approximated by the dense output layer. Outputting all targets at once is computationally efficient and provides the model with additional information when updating the parameters. The seasonality of the solar production and DAP were provided directly a sinusoidal waves with periods of 24 hours and 12 hours, respectively. All inputs and outputs were normalized so that the different scales of the multi-target regression targets would not affect the model's learning.
 
 ```{julia}
 #| label: data-transforms
@@ -946,7 +946,7 @@ Qualitatively, we observe the LSTM predictions in @fig-predictions are sensible 
 Test Data Predictions
 :::
 
-We check the Mean Absolute and Root Mean Squared Error for all three testing sets to ensure the model is not overfitting. The results are shown in @tbl-MAE-error and @tbl-RMSE-error.
+We check the Mean Absolute and Root Mean Squared Error for all three testing sets to ensure the model is not overfitting. The results are shown in @tbl-MAE-error and @tbl-RMSE-error. The error values are fairly consistent across datasets for the two error measures indicating that we have not overfit the model. The errors are typically worse in the test but not to the point of overfitting. More than likely, there are some events present in the test data that are not observed in the training data. The best way to improve this would be to increase the history of the training data.
 
 :::{#tbl-MAE-error}
 ```{julia}
@@ -980,7 +980,7 @@ Mean Absolute Error
 
 RMSE_df = DataFrame(
     features = energy_cols,
-    Train = [sqrt(mean((data[("test", )][:, col] .- data[("test", )][:, string(col, "_pred")]).^2))
+    Train = [sqrt(mean((data[("train", )][:, col] .- data[("train", )][:, string(col, "_pred")]).^2))
         for col in energy_cols
     ],
     Calib = [sqrt(mean((data[("calib", )][:, col] .- data[("calib", )][:, string(col, "_pred")]).^2))
@@ -993,8 +993,6 @@ RMSE_df = DataFrame(
 ```
 Root Mean Square Error
 :::
-
-The error values are fairly consistent across datasets for the two error measures indicating that we have not overfit the model. 
 
 Looking at the residual histograms in @fig-calib-residuals-histograms, we see they resemble Normal distributions centered on zero. This indicates we will be able to conformalize the model to obtain a probabilistic forecast. Solar residuals have most values at zero because the model correctly predicts no solar energy production at night. We get around this by using the combined energy as we don't explicitly have to know the solar and the wind energy production.
 
@@ -1141,7 +1139,7 @@ $$ {#eq-revenue}
 $$
 \Delta_E = Actual - Trade
 $$
-The difference between actual and traded energy is penalized by the SSP and its square multiplied by $0.07$. This is the piece that penalizes for both over and underproduction when SSP is positive which is the norm. While there are times when SSP is negative, they tend to be at times of overproduction so there is not a realistic way to exploit an arbitrage scenario by over-promising and under-delivering when prices are negative.
+The difference between actual and traded energy is penalized by the SSP and its square multiplied by $0.07$. This is the piece that penalizes for both over and underproduction when SSP is positive which is the norm. While there are times when SSP is negative, they tend to be at times of overproduction so there is not a realistic way to exploit an arbitrage scenario by over-promising and under-delivering during such periods.
 
 ```{julia}
 #| label: revenue-formula
@@ -1206,7 +1204,7 @@ We implemented CVaR by sampling residuals from the calibration data and adding t
 4. At each available trade amount, calculate the mean of the lower 33% of the revenues in the scenarios. This is the CVaR.
 5. Find the trade amount with the maximum CVaR.
 
-The results of this process are depicted in @fig-cvar-plot. The multi-colored curves represent different scenarios evaluated for each available trade amount. The color represents how far off the predicted energy production was from the actual energy production. The solid black curve is the mean, or expected value of trading that amount of energy for those scenarios. The dashed black curve is the CVaR. For this optimization problem with a single decision variable, how much to trade, we can graphically see the maximum is at about 700 MWh. So the decision is made to trade that amount and the actual revenue is shown as the green diamond. Also plotted are the "+" showing the revenue from a perfect prediction and commitment of the energy production and the "o" showing the point prediction and associated revenue. The fact that the CVaR revenue is higher than the CVaR curve indicates the true outcome was not in the worst 33% of scenarios. In this case, the maximal CVaR happens to be close to the maximal mean, but it is not always the case. Typically, we would see the CVaR peak at a point off of the peak of the mean curve. The point is to maximize the expectation of the worst outcomes, but this comes at the cost of not maximizing the outcome. If one had infinite funds and could assume infinite risk, the optimal strategy would be to maximize the expected value. In the real world, we prefer to limit our risk exposure. Lastly, we note that CVaR performs better than the point forecast. With CVaR we have accounted for our uncertainty about the energy production and market prices while the point forecast is only considering production and no uncertainty. This highlights the importance of considering the uncertainty in the predictions and trading.
+The results of this process are depicted in @fig-cvar-plot. The multi-colored curves represent different scenarios evaluated for each available trade amount. The color represents how far off the predicted energy production was from the actual energy production. The solid black curve is the mean, or expected value of trading that amount of energy for those scenarios. The dashed black curve is the CVaR. For this optimization problem with a single decision variable, how much to trade, we can graphically see the maximum is at about 700 MWh. So the decision is made to trade that amount and the actual revenue is shown as the green diamond. Also plotted are the "+" showing the revenue from a perfect prediction and commitment of the energy production and the "o" showing the point prediction and associated revenue. The fact that the CVaR revenue is higher than the CVaR curve shows that the actual revenue cannot be known, and that CVaR curve is just the expected value of that quantile. In this case, the maximal CVaR happens to be close to the maximal mean, but it is not always the case. Typically, we would see the CVaR peak at a point off of the peak of the mean curve. The goal is to maximize the expectation of the worst outcomes, but this comes at the cost of not maximizing the outcome. If one had infinite funds and could assume infinite risk, the optimal strategy would be to maximize the expected value. In the real world, we prefer to limit our risk exposure. Lastly, we note that CVaR performs better than the point forecast. With CVaR we have accounted for our uncertainty about the energy production and market prices while the point forecast is only considering production and no uncertainty. This highlights the importance of considering the uncertainty in the predictions and trading.
 
 :::{#fig-cvar-plot}
 ```{julia}
@@ -1400,7 +1398,7 @@ CSV.write("src/data/data_predictions_revenues.csv", vcat(data...))
 
 ## Performance
 
-The plot of cumulative revenue over the testing period for each trading strategy is shown in @fig-cumulative-revenue. The perfect forecast is a point of reference for what would be achieved if the operator could perfectly predict the production and not trade on the real-time market at all. As expected, this is the highest value even though it does not consider market prices. Next, we see that CP-adjusted commitment outperforms the other strategies. As alluded to earlier, this may be a case of gambling and getting lucky as there is no justification for this reduction other than that it happened to perform well. There may be a strong underlying reason which would explain why this is a good strategy. Next, we see that CVaR is just behind the CP-adjusted strategy. Lastly, the point forecast performed the worst as it suffered the biggest loss in the first week and never fully recovered to the level of the other two strategies.
+The plot of cumulative revenue over the testing period for each trading strategy is shown in @fig-cumulative-revenue. The perfect forecast is a point of reference for what would be achieved if the operator could perfectly predict the production and not trade on the real-time market at all. As expected, this is the highest value even though it does not consider market prices. Next, we see that CP-adjusted commitment outperforms the other strategies. As alluded to earlier, this may be a case of gambling and getting lucky as there is no justification for this reduction other than that it happened to perform well. Conversely, there may be a strong underlying reason which would explain why this is a good strategy. Next, we see that CVaR is just behind the CP-adjusted strategy. Lastly, the point forecast performed the worst as it suffered the biggest loss in the first week and never fully recovered to the level of the other two strategies.
 
 
 :::{#fig-cumulative-revenue}
