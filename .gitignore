@@ -6,3 +6,5 @@ _freeze/
 EnergyProdConformalLSTM_files/
 
 .vscode/
+src/.DS_Store
+src/data/predictions.csv
