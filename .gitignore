@@ -1,6 +1,10 @@
+# ignore the Julia Manifest file (but we need Project.toml)
 Manifest.toml
 
-
+# ignorre vscode things
 .vscode/
 src/.DS_Store
-src/data/predictions.csv
+
+# ignore intermediate output for the compiling and rendering
+.quarto/
+EnergyProdConformalLSTM_files/
