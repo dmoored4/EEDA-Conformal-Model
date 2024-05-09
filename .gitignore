@@ -1,9 +1,5 @@
 Manifest.toml
 
-_extensions/
-_freeze/
-.quarto/
-EnergyProdConformalLSTM_files/
 
 .vscode/
 src/.DS_Store
