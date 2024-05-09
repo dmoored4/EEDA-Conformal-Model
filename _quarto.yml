@@ -3,4 +3,6 @@ project:
 
 formats:
   ieee-pdf: default
-  ieee-html: default
+  html:
+      toc: true
+      toc-location: left-body
